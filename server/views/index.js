@@ -120,12 +120,13 @@ ${safeHttp(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" l
 
 function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities = [], routes = [], stays = [], jobs = [] } = {}) {
     const rails = [
-        { id: 'tr-live', title: 'Live tours now', more: { href: '/live', label: 'All live tours' }, items: live.length ? live.map(liveCard) : ['<p class="tr-muted">No IRL tour is live on OpenVibe.Live right now. Recent recordings are below.</p>'], size: 'm' },
+        // Real first (the owner, 10-31): live tours when someone is live, else the recordings; never an empty rail.
+        live.length ? { id: 'tr-live', title: 'Live tours now', more: { href: '/live', label: 'All live tours' }, items: live.map(liveCard), size: 'm' } : null,
         !live.length && recent.length ? { id: 'tr-recent', title: 'Recent IRL recordings and clips', more: { href: '/live', label: 'All live tours' }, items: recent.map(liveCard), size: 'm' } : null,
         placeOfDay ? { id: 'tr-place-of-day', title: 'Place of the day', items: [placeOfDayCard(placeOfDay)], size: 'l' } : null,
         cities.length ? { id: 'tr-cities', title: 'Top cities', more: { href: '/cities', label: 'All cities' }, items: cities.map(cityCard), size: 'm' } : null,
         routes.length ? { id: 'tr-routes', title: 'Self-guided routes', more: { href: '/routes', label: 'All routes' }, items: routes.map(routeCard), size: 'm' } : null,
-        { id: 'tr-stays', title: 'Stays', more: { href: '/stays', label: 'All stays' }, items: stays.length ? stays.map(stayCard) : ['<p class="tr-muted">OpenVibe.Rent has no active listing in these cities today. The shelf fills as people post.</p>'], size: 'm' },
+        stays.length ? { id: 'tr-stays', title: 'Stays', more: { href: '/stays', label: 'All stays' }, items: stays.map(stayCard), size: 'm' } : null,
     ].filter(Boolean);
     const lastFetch = jobs.map((j) => j.finished_at).filter(Boolean).sort().pop();
     const proof = [
