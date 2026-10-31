@@ -16,7 +16,8 @@ const { createWikidata } = require('../sources/wikidata');
 const { parseCityPage, pageUrl } = require('../sources/wikivoyage');
 const { slugify } = require('../store');
 
-const CATALOG = path.join(__dirname, '..', '..', 'data', 'top-cities.json');
+// The list of cities to read (committed: data/ is for the development database and is not in git).
+const CATALOG = path.join(__dirname, '..', '..', 'seed', 'top-cities.json');
 
 function loadCatalog(limit = 100) {
     const rows = JSON.parse(fs.readFileSync(CATALOG, 'utf8'));
