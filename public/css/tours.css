@@ -31,7 +31,7 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr-pin { fill: var(--room-accent, #F98942); stroke: var(--bg-primary, #0a0f1c); stroke-width: 2; }
 .tr-pin-n { fill: #0a0f1c; font-size: 9px; font-weight: 800; }
 .tr-walk { filter: drop-shadow(0 2px 8px rgba(0,0,0,.4)); }
-.tr-vis-badge { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 999px; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--room-strong, var(--accent-light, #60a5fa)); border: 1px solid var(--border, rgba(255,255,255,.12)); }
+.tr-vis-badge { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 999px; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--room-strong, var(--accent-light, #60a5fa)); border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 12%, transparent)); }
 
 /* Cards, lists, forms */
 .tr-card, .tr-form.tr-card { border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; background: var(--bg-secondary, #101828); padding: 18px; }
@@ -84,7 +84,7 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 
 /* Route map and stops */
 .tr-map { margin: 18px 0 0; }
-.tr-maplibre { height: min(56vh, 440px); border-radius: 16px; overflow: hidden; border: 1px solid var(--border, rgba(255,255,255,.12)); }
+.tr-maplibre { height: min(56vh, 440px); border-radius: 16px; overflow: hidden; border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 12%, transparent)); }
 .tr-map-fallback { margin: 0; }
 .tr-map-fallback-out { display: none; }
 .tr-map-bg { fill: var(--bg-secondary, #101828); }
@@ -103,9 +103,9 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr-trip-places li > div { display: grid; gap: 2px; }
 .tr-price { font-weight: 800; color: var(--room-strong, var(--accent-light, #60a5fa)); }
 .tr-jobs { margin: 8px 0 0; padding-left: 18px; color: var(--text-secondary, #96a7c2); font-size: .88rem; line-height: 1.6; }
-.tr-table-wrap { overflow-x: auto; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 14px; }
+.tr-table-wrap { overflow-x: auto; border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 12%, transparent)); border-radius: 14px; }
 .tr-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-.tr-table th, .tr-table td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--border, rgba(255,255,255,.1)); vertical-align: top; }
+.tr-table th, .tr-table td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 10%, transparent)); vertical-align: top; }
 .tr-table thead th { background: var(--bg-secondary, #101828); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted, #7386a3); }
 .tr-list { padding-left: 18px; line-height: 1.7; }
 .tr-card h2:first-child, .tr-card h3:first-child { margin-top: 0; }
