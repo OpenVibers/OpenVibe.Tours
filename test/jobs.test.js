@@ -55,7 +55,8 @@ const { boot, check, done } = require('./helpers/boot');
             const out = await t.ctx.jobs.runOnce('routes', { limit: 100 });
             assert.strictEqual(out.status, 'ok', JSON.stringify(out));
             assert.strictEqual(out.counts.routes, 6);
-            assert.strictEqual(out.counts.stops, 36);
+            // 34, not every See listing: two sights more than 8 km on are too few for a second walk (routes.js walksOf).
+            assert.strictEqual(out.counts.stops, 34);
             const route = await t.ctx.s.db.maybe("SELECT * FROM tours_routes WHERE slug = 'tokyo-see-1'");
             assert.strictEqual(route.generated, true);
             assert.match(route.source_url, /wikivoyage\.org/);
@@ -67,7 +68,7 @@ const { boot, check, done } = require('./helpers/boot');
             const again = await t.ctx.jobs.runOnce('routes', { limit: 100 });
             assert.strictEqual(again.counts.routes, 6);
             assert.strictEqual(await t.ctx.s.db.value('SELECT COUNT(*)::int FROM tours_routes'), 6);
-            assert.strictEqual(await t.ctx.s.db.value('SELECT COUNT(*)::int FROM tours_route_stops'), 36);
+            assert.strictEqual(await t.ctx.s.db.value('SELECT COUNT(*)::int FROM tours_route_stops'), 34);
         });
 
         await check('live: IRL streams, VODs and clips only, public Live/video URLs, a city when the title names one', async () => {
@@ -106,7 +107,30 @@ const { boot, check, done } = require('./helpers/boot');
             await db.exec(`INSERT INTO tours_job_runs (job, started_at, finished_at, status, counts) VALUES ('routes', now(), now(), 'ok', $1::jsonb)`, [JSON.stringify({ cities: 0, routes: 0, errors: [] })]);
             assert.strictEqual(await t.ctx.jobs.isFresh('routes'), false, 'an empty run is not fresh');
             await db.exec(`INSERT INTO tours_job_runs (job, started_at, finished_at, status, counts) VALUES ('routes', now() + interval '1 second', now() + interval '1 second', 'ok', $1::jsonb)`, [JSON.stringify({ cities: 3, routes: 2, errors: [] })]);
-            assert.strictEqual(await t.ctx.jobs.isFresh('routes'), true, 'a run that worked is');
+            assert.strictEqual(await t.ctx.jobs.isFresh('routes'), false, 'a run made under older walk rules is not fresh either');
+            await db.exec(`INSERT INTO tours_job_runs (job, started_at, finished_at, status, counts) VALUES ('routes', now() + interval '2 seconds', now() + interval '2 seconds', 'ok', $1::jsonb)`, [JSON.stringify({ cities: 3, routes: 2, errors: [], version: require('../server/jobs/routes').ROUTES_VERSION || 'walks-1' })]);
+            assert.strictEqual(await t.ctx.jobs.isFresh('routes'), true, 'a run that worked under the current rules is');
+        });
+
+        await check('a walk keeps to its city and to walking order (production had "Pune: 16623.8 km")', async () => {
+            const { walksOf, haversineM } = require('../server/jobs/routes');
+            const lisbon = { lat: 38.7223, lon: -9.1393 };
+            const see = [
+                { name: 'Castelo de São Jorge', lat: 38.7139, lon: -9.1335 },
+                { name: 'Belém Tower', lat: 38.6916, lon: -9.2160 },
+                { name: 'Lisbon Cathedral', lat: 38.7097, lon: -9.1336 },
+                { name: 'Santa Justa Lift', lat: 38.7121, lon: -9.1394 },
+                { name: 'Jerónimos (a namesake in Brazil)', lat: -22.9, lon: -43.2 },
+                { name: 'Praça do Comércio', lat: 38.7075, lon: -9.1364 },
+            ];
+            const walks = walksOf(see, lisbon);
+            assert.strictEqual(walks.length, 1);
+            assert.ok(!walks[0].some((s) => /Brazil/.test(s.name)), 'the namesake an ocean away is left out');
+            const km = walks[0].slice(1).reduce((n, s, i) => n + haversineM(walks[0][i], s), 0) / 1000;
+            assert.ok(km < 15, `a walk, not a flight (${km.toFixed(1)} km)`);
+            const nearest = see.slice().sort((a, b) => haversineM(lisbon, a) - haversineM(lisbon, b))[0].name;
+            assert.strictEqual(walks[0][0].name, nearest, 'it starts nearest the centre');
+            assert.deepStrictEqual(walksOf(see.slice(0, 3), lisbon), [], 'fewer than four stops is no walk');
         });
 
         await check('every job left a receipt with its counts', async () => {

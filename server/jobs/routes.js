@@ -26,6 +26,7 @@ function createRoutesJob({ config, s, store, fetchImpl, log = console }) {
     async function runOnce({ limit = config.openData.cityLimit } = {}) {
         const cities = await store.listCities({ limit });
         const result = { cities: 0, routes: 0, stops: 0, noStops: [], errors: [] };
+        result.version = ROUTES_VERSION;
         for (const city of cities) {
             const source = await store.citySource(city.id);
             if (!source) { result.noStops.push(city.slug); continue; }
@@ -41,9 +42,10 @@ function createRoutesJob({ config, s, store, fetchImpl, log = console }) {
                 }
             }
             const usable = listings.filter((x) => x && x.hasCoords && Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lon)));
-            if (usable.length < 4) { result.noStops.push(city.slug); continue; }
+            // A city with no walk left keeps no routes from an earlier run (they may be the ones this fixes).
+            if (usable.length < 4) { await store.replaceRoutesForCity(city.id, []); result.noStops.push(city.slug); continue; }
             const places = await store.cityPlaces(city.id, { limit: 200 });
-            const chunks = usable.length >= 8 ? [usable.slice(0, 7), usable.slice(7, 14)] : [usable.slice(0, 8)];
+            const chunks = walksOf(usable, city);
             const routes = [];
             for (const [i, stops] of chunks.entries()) {
                 if (stops.length < 4) continue;
@@ -74,7 +76,7 @@ function createRoutesJob({ config, s, store, fetchImpl, log = console }) {
                     }),
                 });
             }
-            if (!routes.length) { result.noStops.push(city.slug); continue; }
+            if (!routes.length) { await store.replaceRoutesForCity(city.id, []); result.noStops.push(city.slug); continue; }
             await store.replaceRoutesForCity(city.id, routes);
             result.cities += 1;
             result.routes += routes.length;
@@ -84,7 +86,46 @@ function createRoutesJob({ config, s, store, fetchImpl, log = console }) {
         return result;
     }
 
-    return { runOnce, haversineM };
+    return { runOnce, haversineM, version: ROUTES_VERSION };
 }
 
-module.exports = { createRoutesJob, haversineM, routeTitle };
+/**
+ * The walks in a See list, as walks (2026-11-01: production showed "Pune: 16623.8 km · 221686 min"). A listing whose
+ * coordinates are far from the city (a namesake elsewhere, a typo) is left out; the rest are put in walking order, nearest
+ * next, starting from the one closest to the centre; a walk ends at a hop longer than MAX_HOP_M or at MAX_STOPS stops.
+ * → [[stop, …], …] each with at least MIN_STOPS stops, at most two walks.
+ */
+// The walks' rules, by name: a run made under older rules is not fresh, so a deploy that changes them rebuilds every
+// route at once instead of in a week (jobs/index.js isFresh).
+const ROUTES_VERSION = 'walks-1';
+const MAX_FROM_CENTRE_M = 30_000;
+const MAX_HOP_M = 8_000;   // a city's See list spans districts: a long hop is a tram ride, a 16 000 km one is a namesake
+const MAX_STOPS = 7;
+const MIN_STOPS = 4;
+function walksOf(listings, centre) {
+    const pts = listings.filter((x) => x && Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lon))).map((x) => ({ ...x, lat: Number(x.lat), lon: Number(x.lon) }));
+    if (!pts.length) return [];
+    let c = centre && Number.isFinite(Number(centre.lat)) && Number.isFinite(Number(centre.lon)) ? { lat: Number(centre.lat), lon: Number(centre.lon) } : null;
+    if (!c) {
+        const mid = (arr) => { const s = arr.slice().sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+        c = { lat: mid(pts.map((p) => p.lat)), lon: mid(pts.map((p) => p.lon)) };
+    }
+    const left = pts.filter((p) => haversineM(c, p) <= MAX_FROM_CENTRE_M);
+    const walks = [];
+    while (left.length >= MIN_STOPS && walks.length < 2) {
+        left.sort((a, b) => haversineM(c, a) - haversineM(c, b));
+        const walk = [left.shift()];
+        while (walk.length < MAX_STOPS && left.length) {
+            const here = walk[walk.length - 1];
+            let best = 0;
+            for (let i = 1; i < left.length; i += 1) if (haversineM(here, left[i]) < haversineM(here, left[best])) best = i;
+            if (haversineM(here, left[best]) > MAX_HOP_M) break;
+            walk.push(left.splice(best, 1)[0]);
+        }
+        if (walk.length >= MIN_STOPS) walks.push(walk);
+        else if (!walks.length && left.length < MIN_STOPS) break;
+    }
+    return walks;
+}
+
+module.exports = { createRoutesJob, haversineM, routeTitle, walksOf, MAX_HOP_M, MAX_FROM_CENTRE_M };

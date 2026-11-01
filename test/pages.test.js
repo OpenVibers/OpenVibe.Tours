@@ -28,6 +28,22 @@ const { seed } = require('./helpers/seed');
             assert.match(r.text, /<main id="main"/);
         });
 
+        await check('home: the pictures it shows are allowed to load (Wikimedia thumbnails, Live\'s recordings)', async () => {
+            const r = await t.get('/');
+            const img = String(r.headers.get('content-security-policy') || '').split(';').find((d) => d.trim().startsWith('img-src')) || '';
+            ['https://upload.wikimedia.org', 'https://thumb.wikimedia.org', 'https://openvibe.media'].forEach((h) => assert.ok(img.includes(h), `img-src allows ${h}`));
+            assert.ok(!/\b1 places\b/.test(r.text), 'one place is "1 place"');
+        });
+
+        await check('place of the day: a long description is cut at a word, with an ellipsis', async () => {
+            const views = require('../server/views/index');
+            const html = views.home ? views.home({ placeOfDay: { id: 'plc_x', name: 'Alandi', city_name: 'Pune', kind: 'attraction', description: 'The resting place of the 13th century Marathi saint Sant Dnyaneshwar. His devotees believe that he is still alive. A temple complex was built at Dnyaneshwar samadhi.' } }) : '';
+            if (!html) return;
+            const m = /Place of the day[\s\S]*?<span class="tr-muted">([^<]*)<\/span>/.exec(String(html));
+            assert.ok(m, 'the card renders');
+            assert.ok(/…$/.test(m[1]) && !/Dnyan…$/.test(m[1]), `cut at a word: ${m[1].slice(-30)}`);
+        });
+
         await check('city page: summary, image licence, places, routes, live, stays and Tourist JSON-LD', async () => {
             const r = await t.get('/city/lisbon');
             assert.strictEqual(r.status, 200);

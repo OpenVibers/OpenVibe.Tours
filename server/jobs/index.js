@@ -27,7 +27,7 @@ function createJobs({ config, s, store, fetchImpl = globalThis.fetch, log = cons
     const jobs = {
         cities: { run: creators.cities.runOnce, maxAgeMs: config.jobs.citiesEveryMs, intervalMs: config.jobs.citiesEveryMs },
         places: { run: creators.places.runOnce, maxAgeMs: config.jobs.placesEveryMs, intervalMs: config.jobs.placesEveryMs },
-        routes: { run: creators.routes.runOnce, maxAgeMs: config.jobs.routesEveryMs, intervalMs: config.jobs.routesEveryMs },
+        routes: { run: creators.routes.runOnce, maxAgeMs: config.jobs.routesEveryMs, intervalMs: config.jobs.routesEveryMs, version: creators.routes.version },
         live: { run: creators.live.runOnce, maxAgeMs: config.jobs.liveEveryMs, intervalMs: config.jobs.liveEveryMs },
         stays: { run: creators.stays.runOnce, maxAgeMs: config.jobs.staysEveryMs, intervalMs: config.jobs.staysEveryMs },
     };
@@ -50,6 +50,8 @@ function createJobs({ config, s, store, fetchImpl = globalThis.fetch, log = cons
         let counts = row.counts;
         if (typeof counts === 'string') { try { counts = JSON.parse(counts); } catch { counts = null; } }
         if (!producedOf(counts)) return false;
+        // A run made under older rules (a job that names a version) is not fresh: the new rules apply at the next boot.
+        if (jobs[name].version && (!counts || counts.version !== jobs[name].version)) return false;
         return Date.now() - new Date(row.finished_at).getTime() < jobs[name].maxAgeMs;
     }
 
