@@ -37,17 +37,23 @@ function createLiveJob({ config, s, store, fetchImpl, log = console }) {
                 if (city) result.withCity += 1;
             }
         }
-        for (const item of recent) {
-            const city = match(`${item.title} ${item.tags.join(' ')}`);
-            await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
-            result.vods += 1;
-            if (city) result.withCity += 1;
+        const recordingsOk = !result.errors.some((e) => e.startsWith('recent:')) && !result.errors.some((e) => e.startsWith('clips:'));
+        if (recordingsOk) await store.clearLiveRecordings();
+        if (!result.errors.some((e) => e.startsWith('recent:'))) {
+            for (const item of recent) {
+                const city = match(`${item.title} ${item.tags.join(' ')}`);
+                await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
+                result.vods += 1;
+                if (city) result.withCity += 1;
+            }
         }
-        for (const item of clips) {
-            const city = match(`${item.title} `);
-            await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
-            result.clips += 1;
-            if (city) result.withCity += 1;
+        if (!result.errors.some((e) => e.startsWith('clips:'))) {
+            for (const item of clips) {
+                const city = match(`${item.title} `);
+                await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
+                result.clips += 1;
+                if (city) result.withCity += 1;
+            }
         }
         await store.trimLiveVods(200);
         return result;

@@ -394,6 +394,9 @@ function createStore(s, { config = {} } = {}) {
     async function clearLiveStreams() {
         await db.exec("DELETE FROM tours_live WHERE kind = 'stream'");
     }
+    async function clearLiveRecordings() {
+        await db.exec("DELETE FROM tours_live WHERE kind IN ('vod', 'clip')");
+    }
     async function trimLiveVods(keep = 200) {
         await db.exec(`DELETE FROM tours_live WHERE kind = 'vod' AND id NOT IN
             (SELECT id FROM tours_live WHERE kind IN ('vod', 'clip') ORDER BY COALESCE(ended_at, fetched_at) DESC LIMIT $1)`, [keep]);
@@ -595,7 +598,7 @@ function createStore(s, { config = {} } = {}) {
         latestJobRuns, recordJobStart, recordJobFinish,
         publicCitiesForSitemap, publicRoutesForSitemap, publicPlacesForSitemap, publicCitiesForLlms,
         upsertCity, upsertCitySource, citySourcesMissing, citySource, upsertPlace, replaceRoutesForCity,
-        upsertLive, clearLiveStreams, trimLiveVods, upsertStay,
+        upsertLive, clearLiveStreams, clearLiveRecordings, trimLiveVods, upsertStay,
         createTrip, tripsForSubject, tripBySlug, updateTrip, deleteTrip,
         addTripPlace, removeTripPlace, setTripRoute, addTripStay, removeTripStay,
     };
