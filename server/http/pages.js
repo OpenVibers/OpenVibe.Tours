@@ -81,7 +81,7 @@ function createPageRoutes(ctx) {
         const attractions = places.slice(0, 10).map((p) => ({
             '@type': 'TouristAttraction', name: p.name, url: `${base()}/place/${p.id}`,
             geo: { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lon },
-            ...(p.description ? { description: p.description } : {}), ...(p.image_url ? { image: p.image_url } : {}),
+            ...(p.description ? { description: p.description } : {}), ...(views.safeImage(p.image_url) ? { image: p.image_url } : {}),
         }));
         const tripLd = routes.slice(0, 3).map((rt) => ({
             '@type': 'TouristTrip', name: rt.title, url: `${base()}/routes/${rt.id}`, description: rt.summary || undefined,
@@ -117,7 +117,7 @@ function createPageRoutes(ctx) {
                     url: `${base()}/place/${place.id}`, description: place.description || undefined,
                     geo: { '@type': 'GeoCoordinates', latitude: place.lat, longitude: place.lon },
                     ...(place.address ? { address: { '@type': 'PostalAddress', streetAddress: place.address, addressLocality: place.city_name } } : {}),
-                    ...(place.image_url ? { image: place.image_url } : {}),
+                    ...(views.safeImage(place.image_url) ? { image: place.image_url } : {}),
                     ...(place.fee === 'no' ? { isAccessibleForFree: true } : place.fee === 'yes' ? { isAccessibleForFree: false } : {}),
                     sameAs: [place.osm_url],
                 },
