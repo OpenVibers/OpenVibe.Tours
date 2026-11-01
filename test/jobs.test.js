@@ -99,6 +99,16 @@ const { boot, check, done } = require('./helpers/boot');
             assert.match(stay.url, /^https:\/\/openvibe\.rent\/listings\/rnt_/);
         });
 
+        await check('a run that found nothing to work on is not fresh: the next boot runs it again', async () => {
+            // 2026-11-01: places, routes and stays ran before the first cities landed, found none, and counted as fresh
+            // for a week. Now an empty run is not fresh, and the scheduler runs them as soon as cities are added.
+            const db = t.ctx.s.db;
+            await db.exec(`INSERT INTO tours_job_runs (job, started_at, finished_at, status, counts) VALUES ('routes', now(), now(), 'ok', $1::jsonb)`, [JSON.stringify({ cities: 0, routes: 0, errors: [] })]);
+            assert.strictEqual(await t.ctx.jobs.isFresh('routes'), false, 'an empty run is not fresh');
+            await db.exec(`INSERT INTO tours_job_runs (job, started_at, finished_at, status, counts) VALUES ('routes', now() + interval '1 second', now() + interval '1 second', 'ok', $1::jsonb)`, [JSON.stringify({ cities: 3, routes: 2, errors: [] })]);
+            assert.strictEqual(await t.ctx.jobs.isFresh('routes'), true, 'a run that worked is');
+        });
+
         await check('every job left a receipt with its counts', async () => {
             const rows = await t.ctx.s.db.many("SELECT DISTINCT ON (job) job, status, counts FROM tours_job_runs ORDER BY job, started_at DESC");
             assert.deepStrictEqual(rows.map((r) => r.job).sort(), ['cities', 'live', 'places', 'routes', 'stays']);
