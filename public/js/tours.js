@@ -44,6 +44,15 @@
         });
         try { map.fitBounds(bounds, { padding: 42, maxZoom: 15, duration: 0 }); } catch (e) { /* the centre is set */ }
         map.on('load', function () {
+            // The walk itself: a dashed line through the stops in order, under the numbered pins (2026-11-01).
+            var coords = stops.map(function (s) { return [Number(s.lon), Number(s.lat)]; }).filter(function (c) { return Number.isFinite(c[0]) && Number.isFinite(c[1]); });
+            if (coords.length > 1) {
+                try {
+                    var accent = (getComputedStyle(document.documentElement).getPropertyValue('--room-accent') || '').trim() || '#F98942';
+                    map.addSource('tr-walk', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } } });
+                    map.addLayer({ id: 'tr-walk', type: 'line', source: 'tr-walk', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': accent, 'line-width': 4, 'line-opacity': 0.85, 'line-dasharray': [1.2, 1.6] } });
+                } catch (e) { /* the pins alone still show the route */ }
+            }
             var fallback = document.getElementById('tr-map-fallback');
             if (fallback) fallback.classList.add('tr-map-fallback-out');
         });
