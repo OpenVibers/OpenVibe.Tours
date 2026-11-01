@@ -26,7 +26,7 @@ function utc(value) {
 }
 
 function categoryOf(s) {
-    return String(s.category || s.chosen_category || s.ai_category || '').toLowerCase();
+    return String(s.category || s.chosen_category || '').toLowerCase();
 }
 
 function isIrl(s) {
@@ -101,20 +101,41 @@ function createLive({ config, fetchImpl, pace }) {
     async function streams() {
         const { json, fetchedAt } = await fetchJson(`${config.upstreams.live}/api/streams`, opts);
         const list = (json && json.streams) || [];
-        return { streams: list.map((s) => streamOf(s, { fetchedAt, liveUrl, videoBase })).filter((s) => s && isIrl(s)), fetchedAt };
+        const seen = new Set();
+        const out = [];
+        for (const s of list) {
+            if (s && s.id != null) { if (seen.has(s.id)) continue; seen.add(s.id); }
+            const row = streamOf(s, { fetchedAt, liveUrl, videoBase });
+            if (row && isIrl(s)) out.push(row);
+        }
+        return { streams: out, fetchedAt };
     }
 
     async function recent(limit = 50) {
         const { json, fetchedAt } = await fetchJson(`${config.upstreams.live}/api/streams/recent?limit=${Math.min(100, Math.max(1, Number(limit) || 50))}`, opts);
         const list = (json && json.streams) || [];
-        return { streams: list.map((s) => vodOf(s, { fetchedAt, liveUrl, videoBase })).filter((s) => s && isIrl(s)), fetchedAt };
+        const seen = new Set();
+        const out = [];
+        for (const s of list) {
+            if (s && s.id != null) { if (seen.has(s.id)) continue; seen.add(s.id); }
+            const row = vodOf(s, { fetchedAt, liveUrl, videoBase });
+            if (row && isIrl(s)) out.push(row);
+        }
+        return { streams: out, fetchedAt };
     }
 
     /** Recent public clips; the IRL test is the title (a clip has no category of its own). */
     async function clips(limit = 50) {
         const { json, fetchedAt } = await fetchJson(`${config.upstreams.live}/api/clips?limit=${Math.min(100, Math.max(1, Number(limit) || 50))}`, opts);
         const list = (json && json.clips) || [];
-        return { clips: list.map((c) => clipOf(c, { fetchedAt, videoBase })).filter((c) => c && isIrl(c)), fetchedAt };
+        const seen = new Set();
+        const out = [];
+        for (const c of list) {
+            if (c && c.id != null) { if (seen.has(c.id)) continue; seen.add(c.id); }
+            const row = clipOf(c, { fetchedAt, videoBase });
+            if (row && isIrl(c)) out.push(row);
+        }
+        return { clips: out, fetchedAt };
     }
 
     return { streams, recent, clips, isIrl, parseTags, categoryOf };
