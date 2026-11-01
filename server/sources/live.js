@@ -30,10 +30,13 @@ function categoryOf(s) {
 }
 
 function isIrl(s) {
-    if (IRL_CATEGORIES.has(categoryOf(s))) return true;
     const tags = parseTags(s.tags).map((t) => t.toLowerCase());
     if (tags.includes('irl') || tags.includes('travel')) return true;
-    return IRL_WORDS.test(String(s.title || ''));
+    if (IRL_WORDS.test(String(s.title || ''))) return true;
+    const chosen = s && s.chosen_category;
+    if (chosen != null) return IRL_CATEGORIES.has(String(chosen).toLowerCase());
+    if (s && Object.prototype.hasOwnProperty.call(s, 'chosen_category')) return false;
+    return IRL_CATEGORIES.has(String((s && s.category) || '').toLowerCase());
 }
 
 function streamOf(s, { fetchedAt, liveUrl, videoBase }) {
