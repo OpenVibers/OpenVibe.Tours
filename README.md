@@ -173,3 +173,9 @@ Room id `tours` in `openvibe-shared/rooms`: dark `#F98942` on `#0B0D12` is **8.0
 ## License
 
 AGPL-3.0-only. See [LICENSE](LICENSE).
+
+<!-- versions:start -->
+- openvibe-contracts: v0.265.0
+- openvibe-sdk: v0.70.0
+- openvibe-shared: v4.70.0
+<!-- versions:end -->
