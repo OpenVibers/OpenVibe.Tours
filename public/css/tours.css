@@ -29,7 +29,11 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr-arc { opacity: .85; }
 .tr-land { fill: var(--room-accent, #F98942); }
 .tr-pin { fill: var(--room-accent, #F98942); stroke: var(--bg-primary, #0a0f1c); stroke-width: 2; }
+/* The walk between the stops, in order, under the pins. */
+.tr-path { fill: none; stroke: var(--room-accent, #F98942); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 7 8; opacity: .75; }
 .tr-pin-n { fill: #0a0f1c; font-size: 9px; font-weight: 800; }
+/* On the route map, numbers readable once the 600-wide map is scaled to a phone (about 0.6). */
+.tr-map-fallback .tr-pin-n { font-size: 14px; }
 .tr-walk { filter: drop-shadow(0 2px 8px rgba(0,0,0,.4)); }
 .tr-vis-badge { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 999px; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--room-strong, var(--accent-light, #60a5fa)); border: 1px solid var(--border, color-mix(in srgb, var(--text-primary, #fff) 12%, transparent)); }
 
@@ -41,6 +45,10 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr-field > span { color: var(--text-secondary, #96a7c2); font-size: .8rem; font-weight: 700; }
 .tr-field input, .tr-field select, .tr-field textarea { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.16)); background: var(--bg-primary, #0a0f1c); color: inherit; font: inherit; }
 .tr-field input:focus-visible, .tr-field select:focus-visible, .tr-field textarea:focus-visible { outline: 2px solid var(--room-accent, #F98942); outline-offset: 1px; }
+/* A link styled as a button keeps the button's own colour: ".tr a" outranked ".tr-btn", and the sign-in button on /trips was orange
+   on orange (2026-11-01). */
+.tr a.tr-btn { color: var(--room-on, #0a0f1c); }
+.tr a.tr-btn-quiet { color: var(--text-primary, #e6edf7); }
 .tr-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 11px; border: 1px solid transparent; background: var(--room-accent, #F98942); color: var(--room-on, #0a0f1c); font-weight: 800; font-size: .95rem; text-decoration: none; cursor: pointer; }
 .tr-btn:hover { filter: brightness(1.06); }
 .tr-btn-quiet { background: transparent; color: var(--text-primary, #e6edf7); border-color: var(--border, rgba(255,255,255,.18)); }

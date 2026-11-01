@@ -281,7 +281,8 @@ function miniMap(stops, label) {
     return `<figure class="tr-map-fallback" id="tr-map-fallback"><svg viewBox="0 0 600 240" role="img" aria-label="${esc(label)}">
 <rect width="600" height="240" rx="14" class="tr-map-bg"/>
 <path d="M0 80 H600 M0 160 H600 M120 0 V240 M300 0 V240 M480 0 V240" class="tr-map-grid"/>
-${pts.map((p, i) => `<g><circle cx="${x(Number(p.lon)).toFixed(1)}" cy="${y(Number(p.lat)).toFixed(1)}" r="9" class="tr-pin"/><text x="${x(Number(p.lon)).toFixed(1)}" y="${(y(Number(p.lat)) + 4).toFixed(1)}" text-anchor="middle" class="tr-pin-n">${i + 1}</text></g>`).join('')}
+${pts.length > 1 ? `<polyline points="${pts.map((p) => `${x(Number(p.lon)).toFixed(1)},${y(Number(p.lat)).toFixed(1)}`).join(' ')}" class="tr-path"/>` : ''}
+${pts.map((p, i) => `<g><circle cx="${x(Number(p.lon)).toFixed(1)}" cy="${y(Number(p.lat)).toFixed(1)}" r="14" class="tr-pin"/><text x="${x(Number(p.lon)).toFixed(1)}" y="${(y(Number(p.lat)) + 5).toFixed(1)}" text-anchor="middle" class="tr-pin-n">${i + 1}</text></g>`).join('')}
 </svg><figcaption>${pts.length} ${pts.length === 1 ? 'stop' : 'stops'} on the map. ${SOURCE.osm}</figcaption></figure>`;
 }
 
