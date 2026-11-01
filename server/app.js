@@ -83,7 +83,7 @@ async function createApp(opts = {}) {
                 scriptSrc: ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://static.cloudflareinsights.com', 'https://unpkg.com'],
                 styleSrc: ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://fonts.googleapis.com', 'https://unpkg.com'],
                 fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
-                imgSrc: ["'self'", 'data:', 'https://openvibe.network', 'https://openvibe.live', 'https://openvibe.rent', 'https://upload.wikimedia.org', 'https://commons.wikimedia.org', 'https://*.tile.openstreetmap.org', 'https://unpkg.com'],
+                imgSrc: ["'self'", 'data:', 'https://openvibe.network', 'https://openvibe.live', 'https://openvibe.rent', 'https://upload.wikimedia.org', 'https://thumb.wikimedia.org', 'https://openvibe.media', 'https://commons.wikimedia.org', 'https://*.tile.openstreetmap.org', 'https://unpkg.com'],
                 connectSrc: ["'self'", 'https://openvibe.network', 'https://cloudflareinsights.com', 'https://openvibe.live', 'https://openvibe.rent', 'https://*.tile.openstreetmap.org', 'https://unpkg.com'],
                 workerSrc: ["'self'", 'blob:'],
                 frameSrc: ["'self'", 'https://openvibe.network'],

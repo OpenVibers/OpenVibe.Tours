@@ -55,7 +55,7 @@ const cityCard = (c) => kit.card({
     alt: c.image_credit ? `${c.name} (${c.image_credit})` : c.name,
     badge: c.country || '',
     who: c.country || '',
-    count: [Number(c.place_count) || 0, 'places'],
+    count: [Number(c.place_count) || 0, Number(c.place_count) === 1 ? 'place' : 'places'],
     peek: c.summary ? String(c.summary).slice(0, 120) : '',
     level: 3,
 });
@@ -108,13 +108,16 @@ const stayCard = (s) => kit.card({
     level: 3,
 });
 
+// Cut at a word, with an ellipsis: never half a word ("was built at Dnyan").
+const clip = (s, n) => { const t = String(s || '').trim(); if (t.length <= n) return t; const cut = t.slice(0, n); const at = cut.lastIndexOf(' '); return `${(at > n * 0.6 ? cut.slice(0, at) : cut).replace(/[\s,;:·-]+$/, '')}…`; };
+
 function placeOfDayCard(p) {
     if (!p) return '';
     return `<article class="tr-pod" data-place="${esc(p.id)}">
 <a class="tr-pod-link" href="/place/${esc(p.id)}">
 ${safeHttp(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" decoding="async">` : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
 <span class="tr-pod-body"><span class="tr-kicker">Place of the day · ${esc(p.city_name || '')}</span><strong>${esc(p.name)}</strong>
-<span class="tr-muted">${esc(p.kind ? p.kind.replace(/_/g, ' ') : 'place')}${p.description ? ` · ${esc(String(p.description).slice(0, 150))}` : ''}</span></span>
+<span class="tr-muted">${esc(p.kind ? p.kind.replace(/_/g, ' ') : 'place')}${p.description ? ` · ${esc(clip(p.description, 150))}` : ''}</span></span>
 </a></article>`;
 }
 
