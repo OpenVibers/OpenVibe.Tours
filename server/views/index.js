@@ -22,6 +22,16 @@ const day = (iso) => (iso ? esc(String(iso).slice(0, 10)) : '—');
 const when = (iso) => (iso ? esc(String(iso).replace('T', ' ').replace(/\.\d+Z$/, ' UTC').replace(/Z$/, ' UTC')) : '—');
 const km = (m) => (Number(m) >= 1000 ? `${(Number(m) / 1000).toFixed(1)} km` : `${Math.round(Number(m) || 0)} m`);
 const safeHttp = (v) => (typeof v === 'string' && /^https?:\/\//i.test(v) ? v : null);
+// A picture is drawn only from a URL that is one: Commons, or a path ending in an image type. A Wikivoyage listing's
+// image field sometimes holds a share link (photos.app.goo.gl), which drew a broken image on the home (2026-11-01).
+const safeImage = (v) => {
+    const u = safeHttp(v);
+    if (!u) return null;
+    try {
+        const { hostname, pathname } = new URL(u);
+        return /(^|\.)wikimedia\.org$/i.test(hostname) || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
+    } catch { return null; }
+};
 const money = (n, c) => `${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${c}`;
 const pct = (n, total) => (total ? Math.round((Number(n) / Number(total)) * 100) : 0);
 
@@ -51,7 +61,7 @@ const cityCard = (c) => kit.card({
     href: `/city/${c.slug}`,
     title: c.name,
     type: 'map',
-    image: safeHttp(c.image_url) || '',
+    image: safeImage(c.image_url) || '',
     alt: c.image_credit ? `${c.name} (${c.image_credit})` : c.name,
     badge: c.country || '',
     who: c.country || '',
@@ -64,7 +74,7 @@ const placeCard = (p) => kit.card({
     href: `/place/${p.id}`,
     title: p.name,
     type: 'map',
-    image: safeHttp(p.image_url) || '',
+    image: safeImage(p.image_url) || '',
     badge: p.kind ? p.kind.replace(/_/g, ' ') : '',
     who: p.city_name || '',
     peek: p.description ? String(p.description).slice(0, 120) : '',
@@ -115,7 +125,7 @@ function placeOfDayCard(p) {
     if (!p) return '';
     return `<article class="tr-pod" data-place="${esc(p.id)}">
 <a class="tr-pod-link" href="/place/${esc(p.id)}">
-${safeHttp(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" decoding="async">` : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
+${safeImage(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" decoding="async">` : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
 <span class="tr-pod-body"><span class="tr-kicker">Place of the day · ${esc(p.city_name || '')}</span><strong>${esc(p.name)}</strong>
 <span class="tr-muted">${esc(p.kind ? p.kind.replace(/_/g, ' ') : 'place')}${p.description ? ` · ${esc(clip(p.description, 150))}` : ''}</span></span>
 </a></article>`;
@@ -213,7 +223,7 @@ function citiesPage({ cities = [], q = '' } = {}) {
 <p class="tr-lede">Coordinates and population from Wikidata, the page and its See list from Wikivoyage, places from OpenStreetMap. A city page lists its places, routes, live tours and stays.</p>
 <form class="tr-form tr-form-inline" method="get" action="/cities" role="search"><label class="tr-field"><span>Find a city</span><input type="search" name="q" value="${esc(q)}" maxlength="80" placeholder="Lisbon"></label><button class="tr-btn" type="submit">Search</button></form></header>
 ${cities.length ? `<ol class="tr-city-list">${cities.map((c) => `<li class="tr-city-row"><a href="/city/${esc(c.slug)}">
-<span class="tr-city-photo">${safeHttp(c.image_url) ? `<img src="${esc(c.image_url)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">◆</span>'}</span>
+<span class="tr-city-photo">${safeImage(c.image_url) ? `<img src="${esc(c.image_url)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">◆</span>'}</span>
 <span class="tr-city-text"><strong>${esc(c.name)}</strong><span class="tr-muted">${esc(c.country)}${c.population ? ` · ${Number(c.population).toLocaleString('en-US')} people` : ''}</span>
 <span class="tr-muted">${Number(c.place_count) || 0} places · ${Number(c.route_count) || 0} routes</span></span></a></li>`).join('')}</ol>` : empty('No city matched that search.', '/cities', 'See all cities')}
 <p class="tr-fine">${SOURCE.wikidata} · ${SOURCE.wikivoyage} · ${SOURCE.osm}</p>
@@ -221,7 +231,7 @@ ${cities.length ? `<ol class="tr-city-list">${cities.map((c) => `<li class="tr-c
 }
 
 function cityPage({ city, places = [], routes = [], live = [], stays = [] } = {}) {
-    const img = safeHttp(city.image_url);
+    const img = safeImage(city.image_url);
     return `<div class="tr-wrap" id="tr-city-page">
 <header class="tr-page-h tr-city-head">
 <p class="tr-kicker">${esc(city.country)}${city.region ? ` · ${esc(city.region)}` : ''}</p>
@@ -246,7 +256,7 @@ function placePage({ place, routeList = [], trips = [] } = {}) {
 <header class="tr-page-h"><p class="tr-kicker">${esc(String(place.kind || '').replace(/_/g, ' '))}</p><h1>${esc(place.name)}</h1>
 <p class="tr-lede">${esc(place.description || `${place.name} in ${place.city_name}, from OpenStreetMap.`)}</p>
 <p class="tr-fine">${place.osm_url ? `<a href="${esc(place.osm_url)}" rel="noopener">OpenStreetMap ${esc(place.osm_type)} ${esc(place.osm_id)}</a> · ` : ''}<a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : 'source')}</a> · fetched ${when(place.fetched_at)}${place.wikidata_id ? ` · <a href="https://www.wikidata.org/wiki/${esc(place.wikidata_id)}" rel="noopener">Wikidata</a>` : ''}</p></header>
-${safeHttp(place.image_url) ? `<figure class="tr-place-img"><img src="${esc(place.image_url)}" alt="${esc(place.name)}" loading="lazy" decoding="async"><figcaption>${esc(place.image_credit || 'OpenStreetMap contributor')}${place.image_license ? ` · ${esc(place.image_license)}` : ''}</figcaption></figure>` : ''}
+${safeImage(place.image_url) ? `<figure class="tr-place-img"><img src="${esc(place.image_url)}" alt="${esc(place.name)}" loading="lazy" decoding="async"><figcaption>${esc(place.image_credit || 'OpenStreetMap contributor')}${place.image_license ? ` · ${esc(place.image_license)}` : ''}</figcaption></figure>` : ''}
 <dl class="tr-facts">
 ${place.address ? `<div><dt>Address</dt><dd>${esc(place.address)}</dd></div>` : ''}
 ${place.opening_hours ? `<div><dt>Opening hours</dt><dd>${esc(place.opening_hours)}</dd></div>` : ''}
@@ -426,4 +436,4 @@ function notFound() {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-not-found"><p class="tr-kicker">404</p><h1>Not here</h1><p class="tr-lede">That city, place, route or trip does not exist, or it is a private trip.</p><p><a class="tr-btn" href="/">Go home</a> <a class="tr-btn tr-btn-quiet" href="/cities">Browse cities</a></p></div>`;
 }
 
-module.exports = { home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
+module.exports = { safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
