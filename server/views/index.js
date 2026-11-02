@@ -131,6 +131,16 @@ ${safeImage(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" 
 </a></article>`;
 }
 
+/** The home's questions: the accordion on the page and the FAQPage data (server/http/discovery.js) are this one list. */
+const HOME_FAQ = [
+    ['Where does the data come from?', 'OpenStreetMap (Overpass, tourism=*) under ODbL, Wikivoyage under CC BY-SA, Wikidata under CC0, OpenVibe.Live\'s public stream list and OpenVibe.Rent\'s public listings. Every city, place, route and source row shows its source and fetch time.'],
+    ['Are the routes real guided tours?', 'No. They are self-guided walks generated from Wikivoyage\'s See lists and marked as generated. Check opening hours and access before you go; the note at each stop is the Wikivoyage text, cited.'],
+    ['Do you sell flights or stays?', 'No. There is no flight API key in v1: the flight form opens the official airline-neutral search with the city pair filled in, with no affiliate parameter. Stays link to the listing on OpenVibe.Rent; Tours never takes a payment.'],
+    ['Is there audio on the stops?', 'Not yet. OpenVibe.AI has no speech-synthesis route today, so every stop says audio is off instead of shipping a broken player. The audio fields are in the schema for when an API exists.'],
+    ['Who can see my trip?', 'Only you, until you switch it to shared. A shared trip is readable by anyone with its link and editable only by you. Delete it at any time; account deletion erases your trips.'],
+    ['Why is a city missing?', 'The v1 catalogue is the top 100 cities by population; every city is fetched from Wikidata and Wikivoyage. A failed source run leaves the previous data and says so in the job receipt rather than inventing a place.'],
+];
+
 function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities = [], routes = [], stays = [], jobs = [] } = {}) {
     const rails = [
         // Real first (the owner, 10-31): live tours when someone is live, else the recordings; never an empty rail.
@@ -200,16 +210,7 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
                 { label: 'OpenAPI', lang: 'json', code: 'GET /api/v1/openapi.json' },
             ],
         },
-        faq: {
-            items: [
-                ['Where does the data come from?', 'OpenStreetMap (Overpass, tourism=*) under ODbL, Wikivoyage under CC BY-SA, Wikidata under CC0, OpenVibe.Live\'s public stream list and OpenVibe.Rent\'s public listings. Every city, place, route and source row shows its source and fetch time.'],
-                ['Are the routes real guided tours?', 'No. They are self-guided walks generated from Wikivoyage\'s See lists and marked as generated. Check opening hours and access before you go; the note at each stop is the Wikivoyage text, cited.'],
-                ['Do you sell flights or stays?', 'No. There is no flight API key in v1: the flight form opens the official airline-neutral search with the city pair filled in, with no affiliate parameter. Stays link to the listing on OpenVibe.Rent; Tours never takes a payment.'],
-                ['Is there audio on the stops?', 'Not yet. OpenVibe.AI has no speech-synthesis route today, so every stop says audio is off instead of shipping a broken player. The audio fields are in the schema for when an API exists.'],
-                ['Who can see my trip?', 'Only you, until you switch it to shared. A shared trip is readable by anyone with its link and editable only by you. Delete it at any time; account deletion erases your trips.'],
-                ['Why is a city missing?', 'The v1 catalogue is the top 100 cities by population; every city is fetched from Wikidata and Wikivoyage. A failed source run leaves the previous data and says so in the job receipt rather than inventing a place.'],
-            ],
-        },
+        faq: { items: HOME_FAQ },
     });
     const jobsLine = jobs.length
         ? `<section class="tr-sec tr-sources" aria-labelledby="tr-sources-h"><h2 id="tr-sources-h">Sources and fetch times</h2><p class="tr-muted">${esc(SOURCE.osm.replace(/<[^>]+>/g, ''))} · Wikivoyage CC BY-SA 4.0 · Wikidata CC0 · OpenVibe.Live · OpenVibe.Rent. Last source run ${lastFetch ? when(lastFetch) : 'not yet'}.</p><ul class="tr-jobs">${jobs.map((j) => `<li><b>${esc(j.job)}</b> ${esc(stateLabel(j.status))}${j.finished_at ? ` · ${when(j.finished_at)}` : ''}${j.error ? ` · ${esc(String(j.error).slice(0, 200))}` : ''}</li>`).join('')}</ul></section>`
@@ -437,4 +438,4 @@ function notFound() {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-not-found"><p class="tr-kicker">404</p><h1>Not here</h1><p class="tr-lede">That city, place, route or trip does not exist, or it is a private trip.</p><p><a class="tr-btn" href="/">Go home</a> <a class="tr-btn tr-btn-quiet" href="/cities">Browse cities</a></p></div>`;
 }
 
-module.exports = { safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
+module.exports = { HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
