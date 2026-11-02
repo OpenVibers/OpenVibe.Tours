@@ -15,6 +15,7 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr-page-h h1, .tr h1 { margin: 0; font-size: clamp(1.9rem, 5vw, 3rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.06; overflow-wrap: anywhere; }
 .tr-kicker { margin: 0 0 4px; font-size: .74rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--room-strong, var(--accent-light, #60a5fa)); }
 .tr-lede { margin: 10px 0 0; max-width: 760px; color: var(--text-secondary, #96a7c2); line-height: 1.6; }
+.tr-local-name { margin: 6px 0 0; font-size: clamp(1.05rem, 2.4vw, 1.35rem); font-weight: 600; color: var(--text-secondary, #96a7c2); overflow-wrap: anywhere; }
 .tr-muted { color: var(--text-muted, #7386a3); }
 .tr-fine { color: var(--text-muted, #7386a3); font-size: .88rem; line-height: 1.55; }
 .tr-more { font-weight: 700; font-size: .9rem; }

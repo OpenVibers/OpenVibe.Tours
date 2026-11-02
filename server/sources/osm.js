@@ -41,6 +41,8 @@ function placeFromElement(el, cityId, fetchedAt) {
         osmType,
         osmId: String(el.id),
         name: String(tags.name).slice(0, 200),
+        // The English name when OpenStreetMap has one that differs (洪崖洞 → Hongya Cave): shown first and searched.
+        nameEn: tags['name:en'] && String(tags['name:en']).trim() && String(tags['name:en']).trim() !== String(tags.name).trim() ? String(tags['name:en']).trim().slice(0, 200) : null,
         kind,
         lat,
         lon,

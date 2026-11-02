@@ -56,7 +56,7 @@ function wirePlace(row) {
     if (!row) return null;
     return {
         id: row.id, city_id: row.city_id, city_slug: row.city_slug || null, city_name: row.city_name || null,
-        osm_type: row.osm_type, osm_id: row.osm_id, name: row.name, kind: row.kind, lat: num(row.lat), lon: num(row.lon),
+        osm_type: row.osm_type, osm_id: row.osm_id, name: row.name, name_en: row.name_en || null, kind: row.kind, lat: num(row.lat), lon: num(row.lon),
         address: row.address || null, website: row.website || null, opening_hours: row.opening_hours || null,
         wheelchair: row.wheelchair || null, fee: row.fee || null, wikidata_id: row.wikidata_id || null,
         wikipedia: row.wikipedia || null, image_url: row.image_url || null, image_credit: row.image_credit || null,
@@ -325,10 +325,10 @@ function createStore(s, { config = {} } = {}) {
         const id = stableId('plc', `${p.osmType}:${p.osmId}`);
         await db.exec(`INSERT INTO tours_places
             (id, city_id, osm_type, osm_id, name, kind, lat, lon, address, website, opening_hours, wheelchair, fee,
-             wikidata_id, wikipedia, image_url, image_credit, image_license, description, source, source_url, fetched_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,now())
+             wikidata_id, wikipedia, image_url, image_credit, image_license, description, source, source_url, fetched_at, name_en, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,now())
             ON CONFLICT (osm_type, osm_id) DO UPDATE SET
-              city_id = EXCLUDED.city_id, name = EXCLUDED.name, kind = EXCLUDED.kind, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
+              city_id = EXCLUDED.city_id, name = EXCLUDED.name, name_en = EXCLUDED.name_en, kind = EXCLUDED.kind, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
               address = EXCLUDED.address, website = EXCLUDED.website, opening_hours = EXCLUDED.opening_hours,
               wheelchair = EXCLUDED.wheelchair, fee = EXCLUDED.fee, wikidata_id = EXCLUDED.wikidata_id, wikipedia = EXCLUDED.wikipedia,
               image_url = EXCLUDED.image_url, image_credit = EXCLUDED.image_credit, image_license = EXCLUDED.image_license,
@@ -339,7 +339,7 @@ function createStore(s, { config = {} } = {}) {
             p.wheelchair || null, p.fee || null, p.wikidataId || null, p.wikipedia || null, p.imageUrl || null,
             p.imageCredit ? clean(p.imageCredit, 250) : null, p.imageLicense ? clean(p.imageLicense, 120) : null,
             p.description ? clean(p.description, 800) : null, p.source || 'openstreetmap', p.sourceUrl,
-            new Date(p.fetchedAt || s.now()).toISOString()]);
+            new Date(p.fetchedAt || s.now()).toISOString(), p.nameEn ? clean(p.nameEn, 200) : null]);
         return id;
     }
 

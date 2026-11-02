@@ -26,13 +26,15 @@ const kindWord = (kind) => { const k = String(kind || 'place').replace(/_/g, ' '
 
 function describePlace(row) {
     const where = [row.city_name, row.country].filter(Boolean).join(', ');
+    // The English name first when OpenStreetMap has one (洪崖洞 → "Hongya Cave (洪崖洞)"), so both find the page.
+    const title = row.name_en && row.name_en !== row.name ? `${row.name_en} (${row.name})` : row.name;
     const facts = [row.fee === 'no' ? 'Free to visit.' : row.fee === 'yes' ? 'Entry is paid.' : '', row.wheelchair === 'yes' ? 'Step-free.' : row.wheelchair === 'limited' ? 'Partly step-free.' : ''].filter(Boolean);
     const about = `${kindWord(row.kind)} in ${where}.`;
     return {
         listed: true,
-        title: row.name,
+        title,
         summary: [about, clip(row.description, 220), ...facts].filter(Boolean).join(' '),
-        body: [row.name, about, row.description, row.address, ...facts].filter(Boolean).join('\n'),
+        body: [title, about, row.description, row.address, ...facts].filter(Boolean).join('\n'),
         facets: { city: row.city_slug, country: row.country, kind: row.kind },
         authorship: { mode: 'imported' },
         publishedAt: iso(row.created_at),
@@ -88,7 +90,7 @@ function createSearchIndex({ config, s, log = console, outbox = null }) {
             place: {
                 page: (row) => `/place/${row.id}`,
                 document: describePlace,
-                rows: page(`SELECT p.id, p.name, p.kind, p.description, p.address, p.fee, p.wheelchair, p.created_at, p.updated_at,
+                rows: page(`SELECT p.id, p.name, p.name_en, p.kind, p.description, p.address, p.fee, p.wheelchair, p.created_at, p.updated_at,
                                    c.name AS city_name, c.slug AS city_slug, c.country
                               FROM tours_places p JOIN tours_cities c ON c.id = p.city_id
                              WHERE p.id > $1 ORDER BY p.id LIMIT $2`),

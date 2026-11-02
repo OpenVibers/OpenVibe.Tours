@@ -70,9 +70,14 @@ const cityCard = (c) => kit.card({
     level: 3,
 });
 
+/** A place's name as a reader of English finds it: OpenStreetMap's English name when there is one, else its own. */
+const placeName = (p) => (p && p.name_en) || (p && p.name) || '';
+/** The place's own name when the English one is shown instead (洪崖洞 beside Hongya Cave), else ''. */
+const localName = (p) => (p && p.name_en && p.name && p.name !== p.name_en ? p.name : '');
+
 const placeCard = (p) => kit.card({
     href: `/place/${p.id}`,
-    title: p.name,
+    title: placeName(p),
     type: 'map',
     image: safeImage(p.image_url) || '',
     badge: p.kind ? p.kind.replace(/_/g, ' ') : '',
@@ -125,8 +130,8 @@ function placeOfDayCard(p) {
     if (!p) return '';
     return `<article class="tr-pod" data-place="${esc(p.id)}">
 <a class="tr-pod-link" href="/place/${esc(p.id)}">
-${safeImage(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" decoding="async">` : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
-<span class="tr-pod-body"><span class="tr-kicker">Place of the day · ${esc(p.city_name || '')}</span><strong>${esc(p.name)}</strong>
+${safeImage(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(placeName(p))}" loading="lazy" decoding="async">` : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
+<span class="tr-pod-body"><span class="tr-kicker">Place of the day · ${esc(p.city_name || '')}</span><strong>${esc(placeName(p))}</strong>
 <span class="tr-muted">${esc(p.kind ? p.kind.replace(/_/g, ' ') : 'place')}${p.description ? ` · ${esc(clip(p.description, 150))}` : ''}</span></span>
 </a></article>`;
 }
@@ -243,7 +248,7 @@ ${img ? `<figure class="tr-city-img"><img src="${esc(img)}" alt="${esc(city.name
 </header>
 ${routes.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Self-guided routes</h2><span class="tr-muted">generated from Wikivoyage's See list</span></div><ol class="tr-route-list">${routes.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${Number(r.stop_count)} stops · ${km(r.distance_m)} · ${Number(r.duration_min)} min</span></a></li>`).join('')}</ol></section>` : ''}
 <section class="tr-sec" id="tr-city-places"><div class="tr-sec-head"><h2>Places</h2><a class="tr-more" href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=13/${city.lat}/${city.lon}" rel="noopener">OpenStreetMap</a></div>
-${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row"><a href="/place/${esc(p.id)}"><strong>${esc(p.name)}</strong><span class="tr-muted">${esc(String(p.kind || '').replace(/_/g, ' '))}${p.address ? ` · ${esc(p.address)}` : ''}${p.wheelchair === 'yes' ? ' · step-free' : ''}${p.fee === 'no' ? ' · free' : ''}</span></a></li>`).join('')}</ol>` : empty('No OpenStreetMap place was stored for this city yet. The places job fills it.', '/cities', 'Another city')}
+${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row"><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(String(p.kind || '').replace(/_/g, ' '))}${p.address ? ` · ${esc(p.address)}` : ''}${p.wheelchair === 'yes' ? ' · step-free' : ''}${p.fee === 'no' ? ' · free' : ''}</span></a></li>`).join('')}</ol>` : empty('No OpenStreetMap place was stored for this city yet. The places job fills it.', '/cities', 'Another city')}
 <p class="tr-fine">${SOURCE.osm}</p></section>
 ${live.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Live tours and recordings</h2><a class="tr-more" href="/live">All live</a></div><ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}${l.city_name ? ` · ${esc(l.city_name)}` : ''}${l.kind === 'stream' ? ` · ${Number(l.viewer_count)} watching` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Live's public stream list · fetched ${when(live[0].fetched_at)}</p></section>` : ''}
 ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2><a class="tr-more" href="/stays">All stays</a></div><ol class="tr-stay-list">${stays.map((s0) => `<li><a href="${esc(s0.url)}" rel="noopener"><strong>${esc(s0.title)}</strong><span class="tr-muted">${esc(s0.kind)} · ${money(s0.price, s0.currency)} / ${esc(s0.period)}${s0.neighbourhood ? ` · ${esc(s0.neighbourhood)}` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Rent's public listings · never a payment on Tours.</p></section>` : ''}
@@ -254,10 +259,10 @@ ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2
 function placePage({ place, routeList = [], trips = [] } = {}) {
     return `<div class="tr-wrap" id="tr-place-page">
 <nav class="crumbs" aria-label="Breadcrumbs"><a href="/cities">Cities</a> / <a href="/city/${esc(place.city_slug)}">${esc(place.city_name)}</a></nav>
-<header class="tr-page-h"><p class="tr-kicker">${esc(String(place.kind || '').replace(/_/g, ' '))}</p><h1>${esc(place.name)}</h1>
-<p class="tr-lede">${esc(place.description || `${place.name} in ${place.city_name}, from OpenStreetMap.`)}</p>
+<header class="tr-page-h"><p class="tr-kicker">${esc(String(place.kind || '').replace(/_/g, ' '))}</p><h1>${esc(placeName(place))}</h1>${localName(place) ? `\n<p class="tr-local-name">${esc(localName(place))}</p>` : ''}
+<p class="tr-lede">${esc(place.description || `${placeName(place)} in ${place.city_name}, from OpenStreetMap.`)}</p>
 <p class="tr-fine">${place.osm_url ? `<a href="${esc(place.osm_url)}" rel="noopener">OpenStreetMap ${esc(place.osm_type)} ${esc(place.osm_id)}</a> · ` : ''}<a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : 'source')}</a> · fetched ${when(place.fetched_at)}${place.wikidata_id ? ` · <a href="https://www.wikidata.org/wiki/${esc(place.wikidata_id)}" rel="noopener">Wikidata</a>` : ''}</p></header>
-${safeImage(place.image_url) ? `<figure class="tr-place-img"><img src="${esc(place.image_url)}" alt="${esc(place.name)}" loading="lazy" decoding="async"><figcaption>${esc(place.image_credit || 'OpenStreetMap contributor')}${place.image_license ? ` · ${esc(place.image_license)}` : ''}</figcaption></figure>` : ''}
+${safeImage(place.image_url) ? `<figure class="tr-place-img"><img src="${esc(place.image_url)}" alt="${esc(placeName(place))}" loading="lazy" decoding="async"><figcaption>${esc(place.image_credit || 'OpenStreetMap contributor')}${place.image_license ? ` · ${esc(place.image_license)}` : ''}</figcaption></figure>` : ''}
 <dl class="tr-facts">
 ${place.address ? `<div><dt>Address</dt><dd>${esc(place.address)}</dd></div>` : ''}
 ${place.opening_hours ? `<div><dt>Opening hours</dt><dd>${esc(place.opening_hours)}</dd></div>` : ''}
@@ -393,7 +398,7 @@ ${mine ? `<section class="tr-sec tr-card"><h2>Share and edit</h2><p class="tr-mu
 <label class="tr-field"><span>Notes</span><textarea name="notes" rows="3" maxlength="2000">${esc(trip.notes || '')}</textarea></label>
 <button class="tr-btn" type="submit">Save the trip</button></form></details></section>` : ''}
 <section class="tr-sec"><div class="tr-sec-head"><h2>Saved places</h2>${mine ? '' : `<span class="tr-muted">${places.length} places</span>`}</div>
-${places.length ? `<ol class="tr-trip-places">${places.map((p) => `<li><span class="tr-stop-num" aria-hidden="true">${Number(p.position)}</span><div><a href="/place/${esc(p.id)}"><strong>${esc(p.name)}</strong></a><span class="tr-muted">${esc(p.city_name)}${p.trip_note ? ` · ${esc(p.trip_note)}` : ''}</span>${mine ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/places/${esc(p.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</div></li>`).join('')}</ol>` : empty('No place saved yet. Open a city and a place, then save it here.', trip.city_slug ? `/city/${trip.city_slug}` : '/cities', 'Find places')}
+${places.length ? `<ol class="tr-trip-places">${places.map((p) => `<li><span class="tr-stop-num" aria-hidden="true">${Number(p.position)}</span><div><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong></a><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(p.city_name)}${p.trip_note ? ` · ${esc(p.trip_note)}` : ''}</span>${mine ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/places/${esc(p.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</div></li>`).join('')}</ol>` : empty('No place saved yet. Open a city and a place, then save it here.', trip.city_slug ? `/city/${trip.city_slug}` : '/cities', 'Find places')}
 ${mine ? `<form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/places"><label class="tr-field"><span>Place id</span><input name="place_id" required placeholder="plc_…" pattern="plc_[0-9A-HJKMNP-TV-Z]{26}"></label><label class="tr-field"><span>Note</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form><p class="tr-fine">The place id is on the place page. In the API: POST /api/v1/trips/${esc(trip.slug)}/places.</p>` : ''}
 </section>
 <section class="tr-sec"><div class="tr-sec-head"><h2>Route</h2>${mine ? `<a class="tr-more" href="${trip.city_slug ? `/city/${trip.city_slug}` : '/routes'}">Find a route</a>` : ''}</div>
@@ -438,4 +443,4 @@ function notFound() {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-not-found"><p class="tr-kicker">404</p><h1>Not here</h1><p class="tr-lede">That city, place, route or trip does not exist, or it is a private trip.</p><p><a class="tr-btn" href="/">Go home</a> <a class="tr-btn tr-btn-quiet" href="/cities">Browse cities</a></p></div>`;
 }
 
-module.exports = { HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
+module.exports = { placeName, localName, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };

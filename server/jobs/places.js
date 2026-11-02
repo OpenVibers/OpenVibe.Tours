@@ -14,6 +14,10 @@ const { createOverpass } = require('../sources/osm');
 const { parseCityPage } = require('../sources/wikivoyage');
 const { stableId } = require('../store');
 
+// A run under older rules is not fresh (jobs/index.js): name-en-1 stores OpenStreetMap's English names, so the first
+// boot with it refreshes the cities marked by migration 0004.
+const PLACES_VERSION = 'name-en-1';
+
 const R = 6_371_000;
 function distanceM(a, b) {
     const rad = (d) => (d * Math.PI) / 180;
@@ -69,7 +73,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
     }
 
     async function runOnce({ limit = config.openData.cityLimit, osmLimit = config.openData.osmCitiesPerRun } = {}) {
-        const result = { cities: 0, wikivoyagePlaces: 0, places: 0, osmCities: 0, empty: [], errors: [] };
+        const result = { cities: 0, wikivoyagePlaces: 0, places: 0, osmCities: 0, empty: [], errors: [], version: PLACES_VERSION };
 
         // 1. Wikivoyage places for every city (fast, cited, no external request).
         const cities = await store.listCities({ limit: Math.max(1, Math.min(100, Number(limit) || 100)) });
@@ -116,7 +120,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         return result;
     }
 
-    return { runOnce, seedWikivoyage, distanceM };
+    return { runOnce, seedWikivoyage, distanceM, version: PLACES_VERSION };
 }
 
 module.exports = { createPlacesJob, distanceM };
