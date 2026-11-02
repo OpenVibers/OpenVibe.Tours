@@ -49,7 +49,7 @@ const node = (tags) => ({ type: 'node', id: 9001, lat: 29.56, lon: 106.58, tags:
             const env = (await t.ctx.s.db.many("SELECT envelope FROM event_outbox WHERE envelope->'payload'->>'id' = $1", [id])).pop();
             assert.ok(env, 'an envelope for the place');
             assert.strictEqual(env.envelope.payload.title, 'Hongya Cave (洪崖洞)');
-            assert.match(env.envelope.payload.body, /Hongya Cave \(洪崖洞\)/);
+            assert.ok(!String(env.envelope.payload.body || '').includes('Attraction in'), 'the body does not repeat the summary (the snippet reads both)');
         });
 
         await check('the places job names a version, so a run under older rules is not fresh', async () => {
