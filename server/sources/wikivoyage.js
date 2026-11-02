@@ -26,6 +26,7 @@ function matchingBrace(text, start) {
 // {{convert|82400|km2}} left Chongqing's lead "…and covers ." (production, 2026-11-02).
 const UNITS = { km2: 'km²', 'km²': 'km²', sqkm: 'km²', sqmi: 'sq mi', mi2: 'sq mi', km: 'km', mi: 'mi', m: 'm', ft: 'ft', ha: 'ha',
     acre: 'acres', acres: 'acres', c: '°C', f: '°F', '°c': '°C', '°f': '°F', kg: 'kg', lb: 'lb', 'km/h': 'km/h', mph: 'mph', l: 'L' };
+const UNIT_TEMPLATES = { km: 'km', km2: 'km²', m: 'm', m2: 'm²', mi: 'mi', mi2: 'sq mi', sqmi: 'sq mi', ft: 'ft', ft2: 'sq ft', kg: 'kg', lb: 'lb', ha: 'ha', acre: 'acres', kmh: 'km/h', mph: 'mph' };
 const number = (v) => (/^-?\d+(\.\d+)?$/.test(String(v).trim()) ? Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(v).trim());
 function inlineTemplate(inner) {
     const parts = splitParams(inner).map((x) => x.trim());
@@ -42,6 +43,9 @@ function inlineTemplate(inner) {
         const unit = UNITS[String(pos[1] || '').toLowerCase()] || pos[1] || '';
         return `${number(pos[0])}${unit ? ` ${unit}` : ''}`;
     }
+    // Wikivoyage's unit templates: {{km2|82,403}} is "82,403 km²" ("…and covers ." for Chongqing, 2026-11-02), {{m|28}}
+    // is "28 m".
+    if (UNIT_TEMPLATES[name] && pos[0]) return `${number(pos[0])} ${UNIT_TEMPLATES[name]}`;
     if (name === 'lang' || name === 'lang-zh') return pos[pos.length - 1] || '';
     if (name === 'nowrap' || name === 'nobr' || name === 'small' || name === 'iata' || name === 'icao') return pos[0] || '';
     if (name === 'w' || name === 'wp') return pos[1] || pos[0] || '';
