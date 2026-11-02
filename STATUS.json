@@ -10,11 +10,11 @@
   "domain": "openvibe.tours",
   "contracts": "openvibe-contracts v0.265.0",
   "sdk": "openvibe-sdk v0.70.0",
-  "shared": "openvibe-shared v4.90.0",
+  "shared": "openvibe-shared v4.91.0",
   "packages": [
     "openvibe-contracts v0.265.0",
     "openvibe-sdk v0.70.0",
-    "openvibe-shared v4.90.0"
+    "openvibe-shared v4.91.0"
   ],
   "summary": "OpenVibe.Tours is the travel room. The top 100 cities come from Wikidata coordinates and Wikivoyage pages; places are OpenStreetMap tourism=* through one bounded Overpass query per city; self-guided routes are generated from Wikivoyage See lists, marked as generated, and cite every stop. IRL streams, VODs and clips come from OpenVibe.Live's public list, stays from OpenVibe.Rent's public listings. There is no flight API key in v1: the form links the official airline-neutral search with the city pair filled in and no affiliate. A signed-in person can make a trip with a city, dates, saved places, one route and stays, and share it read-only. No route needs a service token; the source jobs are off under TOURS_DRILL.",
   "works": [
