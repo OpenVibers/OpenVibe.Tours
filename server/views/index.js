@@ -87,7 +87,7 @@ const routeCard = (r) => kit.card({
     type: 'map',
     badge: r.generated ? 'Wikivoyage' : '',
     who: r.city_name || '',
-    count: [Number(r.stop_count) || 0, 'stops'],
+    count: [Number(r.stop_count) || 0, Number(r.stop_count) === 1 ? 'stop' : 'stops'],
     corner: `${km(r.distance_m)} · ${Number(r.duration_min) || 0} min`,
     peek: r.summary ? String(r.summary).slice(0, 140) : '',
     level: 3,
