@@ -30,9 +30,9 @@ function fileTitle(name) {
     return /^File:/i.test(s) ? s : `File:${s}`;
 }
 
-// A run under older rules is not fresh (jobs/index.js): inline-templates-2 keeps {{convert}}, the unit templates ({{km2}}), {{lang}} and the like
-// in the summaries, so the first boot with it rewrites them.
-const CITIES_VERSION = 'inline-templates-2';
+// A run under older rules is not fresh (jobs/index.js): credits-1 also cleans picture credits (and {{unesco}}, rail badges); inline-templates-2 kept
+// {{convert}}, the unit templates ({{km2}}), {{lang}} and the like in the summaries, so the first boot with it rewrites them.
+const CITIES_VERSION = 'credits-1';
 
 function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
     const wikivoyage = createWikivoyage({ config, fetchImpl, pace: s.pace });

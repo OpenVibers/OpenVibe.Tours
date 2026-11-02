@@ -18,7 +18,7 @@ const { boot, check, done } = require('./helpers/boot');
             const tokyo = await t.ctx.s.db.maybe("SELECT * FROM tours_cities WHERE slug = 'tokyo'");
             assert.strictEqual(tokyo.wikidata_id, 'Q1490');
             assert.strictEqual(tokyo.image_license, 'CC BY-SA 4.0');
-            assert.match(tokyo.image_credit, /photographer/i);
+            assert.strictEqual(tokyo.image_credit, 'A photographer & friends', 'Commons HTML: no space before punctuation, no trailing stop, entities decoded');
             assert.strictEqual(tokyo.country, 'Japan');
             assert.strictEqual(tokyo.country_code, 'JP');
             assert.match(tokyo.summary, /capital of Japan/);
