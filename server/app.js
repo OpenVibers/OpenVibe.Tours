@@ -33,6 +33,7 @@ const { assetVersion, send } = require('./render/layout');
 const { raw } = require('./render/html');
 const { createStore: dataStore } = require('./store');
 const { createJobs } = require('./jobs');
+const { createSearchIndex } = require('./search-index');
 const accountDataLib = require('./identity/account-data');
 const { createNetworkSender } = require('openvibe-sdk/account-data');
 
@@ -53,13 +54,15 @@ async function createApp(opts = {}) {
     const principal = createPrincipal({ config, keys });
     const store = dataStore(s, { config });
     const jobs = createJobs({ config, s, store, fetchImpl, log });
+    // The places, cities and walks in OpenVibe.Search (started by server/index.js, never under TOURS_DRILL).
+    const searchIndex = createSearchIndex({ config, s, log });
 
     const accountData = accountDataLib.create({ db: s.db, log });
     const accountSend = opts.accountSend || (config.oauth.clientSecret
         ? createNetworkSender({ networkInternalUrl: config.networkInternalUrl, clientId: config.oauth.clientId, clientSecret: config.oauth.clientSecret, fetch: fetchImpl })
         : async () => { throw new Error('OV_OAUTH_CLIENT_SECRET is not set: Tours cannot answer account events'); });
 
-    const ctx = { config, s, keys, sso, principal, store, jobs, accountData, accountSend, log };
+    const ctx = { config, s, keys, sso, principal, store, jobs, searchIndex, accountData, accountSend, log };
 
     const app = express();
     app.disable('x-powered-by');
