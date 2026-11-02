@@ -15,6 +15,7 @@ function createLifecycle({ server, ctx, exit, signals, timers = [], extra = [] }
         close: [
             () => { for (const t of timers) clearInterval(t); },
             () => ctx.jobs.stop(),
+            () => { if (ctx.searchIndex) ctx.searchIndex.stop(); },
             () => ctx.keys.client.stop(),
             async () => { clearInterval(ctx.telemetryTick); if (ctx.retention) await ctx.retention.stop(); if (ctx.telemetry) await ctx.telemetry.stop(); },
             () => ctx.s.close(),
@@ -37,6 +38,8 @@ async function start() {
     ctx.telemetryTick.unref();
     ctx.keys.client.start();
     if (!config.drill) ctx.jobs.start();
+    // The places, cities and walks in OpenVibe.Search: a sweep a minute after boot and every six hours.
+    if (!config.drill) ctx.searchIndex.start();
 
     const subs = config.drill ? null : startSubscriptions({
         eventsUrl: config.events.url,
