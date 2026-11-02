@@ -149,7 +149,11 @@ function createStore(s, { config = {} } = {}) {
     async function cityPlaces(cityId, { limit = 60 } = {}) {
         const rows = await db.many(`SELECT p.*, c.slug AS city_slug, c.name AS city_name
             FROM tours_places p JOIN tours_cities c ON c.id = p.city_id
-            WHERE p.city_id = $1 ORDER BY p.kind, p.name LIMIT $2`, [String(cityId), Math.min(200, Math.max(1, int(limit, 60)))]);
+            WHERE p.city_id = $1
+            -- The places a visitor can use first: a picture, a description, a name they can read; then by kind and name
+            -- (by kind alone, Chongqing's list opened on an artwork with a Chinese-only name, 2026-11-02).
+            ORDER BY (p.image_url IS NOT NULL) DESC, (p.description IS NOT NULL) DESC,
+                     (p.name_en IS NOT NULL OR p.name ~ '[A-Za-z]') DESC, p.kind, p.name LIMIT $2`, [String(cityId), Math.min(200, Math.max(1, int(limit, 60)))]);
         return rows.map(wirePlace);
     }
 

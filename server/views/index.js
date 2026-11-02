@@ -74,6 +74,8 @@ const cityCard = (c) => kit.card({
 const placeName = (p) => (p && p.name_en) || (p && p.name) || '';
 /** The place's own name when the English one is shown instead (洪崖洞 beside Hongya Cave), else ''. */
 const localName = (p) => (p && p.name_en && p.name && p.name !== p.name_en ? p.name : '');
+/** A place's kind for its row, unless its name already ends with it ("Bose museum" was followed by "museum"). */
+const kindUnlessNamed = (p) => { const k = String(p.kind || '').replace(/_/g, ' '); return k && !placeName(p).toLowerCase().endsWith(k.toLowerCase()) ? k : ''; };
 
 const placeCard = (p) => kit.card({
     href: `/place/${p.id}`,
@@ -248,7 +250,7 @@ ${img ? `<figure class="tr-city-img"><img src="${esc(img)}" alt="${esc(city.name
 </header>
 ${routes.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Self-guided routes</h2><span class="tr-muted">generated from Wikivoyage's See list</span></div><ol class="tr-route-list">${routes.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${Number(r.stop_count)} stops · ${km(r.distance_m)} · ${Number(r.duration_min)} min</span></a></li>`).join('')}</ol></section>` : ''}
 <section class="tr-sec" id="tr-city-places"><div class="tr-sec-head"><h2>Places</h2><a class="tr-more" href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=13/${city.lat}/${city.lon}" rel="noopener">OpenStreetMap</a></div>
-${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row"><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(String(p.kind || '').replace(/_/g, ' '))}${p.address ? ` · ${esc(p.address)}` : ''}${p.wheelchair === 'yes' ? ' · step-free' : ''}${p.fee === 'no' ? ' · free' : ''}</span></a></li>`).join('')}</ol>` : empty('No OpenStreetMap place was stored for this city yet. The places job fills it.', '/cities', 'Another city')}
+${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row"><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong><span class="tr-muted">${esc([localName(p), kindUnlessNamed(p), p.address, p.wheelchair === 'yes' ? 'step-free' : '', p.fee === 'no' ? 'free' : ''].filter(Boolean).join(' · '))}</span></a></li>`).join('')}</ol>` : empty('No OpenStreetMap place was stored for this city yet. The places job fills it.', '/cities', 'Another city')}
 <p class="tr-fine">${SOURCE.osm}</p></section>
 ${live.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Live tours and recordings</h2><a class="tr-more" href="/live">All live</a></div><ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}${l.city_name ? ` · ${esc(l.city_name)}` : ''}${l.kind === 'stream' ? ` · ${Number(l.viewer_count)} watching` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Live's public stream list · fetched ${when(live[0].fetched_at)}</p></section>` : ''}
 ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2><a class="tr-more" href="/stays">All stays</a></div><ol class="tr-stay-list">${stays.map((s0) => `<li><a href="${esc(s0.url)}" rel="noopener"><strong>${esc(s0.title)}</strong><span class="tr-muted">${esc(s0.kind)} · ${money(s0.price, s0.currency)} / ${esc(s0.period)}${s0.neighbourhood ? ` · ${esc(s0.neighbourhood)}` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Rent's public listings · never a payment on Tours.</p></section>` : ''}
@@ -443,4 +445,4 @@ function notFound() {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-not-found"><p class="tr-kicker">404</p><h1>Not here</h1><p class="tr-lede">That city, place, route or trip does not exist, or it is a private trip.</p><p><a class="tr-btn" href="/">Go home</a> <a class="tr-btn tr-btn-quiet" href="/cities">Browse cities</a></p></div>`;
 }
 
-module.exports = { placeName, localName, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
+module.exports = { placeName, localName, kindUnlessNamed, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
