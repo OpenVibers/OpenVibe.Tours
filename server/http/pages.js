@@ -67,7 +67,7 @@ function createPageRoutes(ctx) {
         return page(req, res, {
             index: true, cache: q ? null : PUBLIC_CACHE, title: 'Cities',
             description: 'The top 100 cities from Wikidata and Wikivoyage, with places from OpenStreetMap, self-guided routes, live tours and stays.',
-            jsonLd: [seo.jsonLd.webPage({ name: 'Cities on OpenVibe.Tours', url: `${base()}/cities`, description: 'The top 100 cities from open data.', siteUrl: base() })],
+            jsonLd: [seo.jsonLd.webPage({ name: 'Cities', url: `${base()}/cities`, description: 'The top 100 cities from open data.', siteUrl: base() })],
             body: raw(views.citiesPage({ cities, q })),
         });
     });
@@ -169,7 +169,7 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
         return page(req, res, {
             index: true, cache: 'public, max-age=30', title: 'Live tours now',
             description: 'IRL tours live on OpenVibe.Live now, and recent IRL recordings, with the city when the public title or tags name one.',
-            jsonLd: [seo.jsonLd.webPage({ name: 'Live tours on OpenVibe.Tours', url: `${base()}/live`, description: 'IRL tours live on OpenVibe.Live.', siteUrl: base() })],
+            jsonLd: [seo.jsonLd.webPage({ name: 'Live tours now', url: `${base()}/live`, description: 'IRL tours live on OpenVibe.Live.', siteUrl: base() })],
             body: raw(views.livePage({ live, recent })),
         });
     });
@@ -180,7 +180,7 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
         return page(req, res, {
             index: true, cache: PUBLIC_CACHE, title: 'Stays',
             description: 'Active rentals from OpenVibe.Rent for the cities Tours covers. No payment and no booking fee on Tours.',
-            jsonLd: [seo.jsonLd.webPage({ name: 'Stays on OpenVibe.Tours', url: `${base()}/stays`, description: 'Rentals from OpenVibe.Rent.', siteUrl: base() })],
+            jsonLd: [seo.jsonLd.webPage({ name: 'Stays', url: `${base()}/stays`, description: 'Rentals from OpenVibe.Rent.', siteUrl: base() })],
             body: raw(views.staysPage({ stays, trips })),
         });
     });
@@ -201,7 +201,7 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
         return page(req, res, {
             index: true, cache: PUBLIC_CACHE, title: 'Flights',
             description: 'No flight API key yet: this form opens the official airline-neutral search with the city pair and dates filled in. No affiliate.',
-            jsonLd: [seo.jsonLd.webPage({ name: 'Flights on OpenVibe.Tours', url: `${base()}/flights`, description: 'An official airline-neutral flight search with the city pair filled in.', siteUrl: base() })],
+            jsonLd: [seo.jsonLd.webPage({ name: 'Flights', url: `${base()}/flights`, description: 'An official airline-neutral flight search with the city pair filled in.', siteUrl: base() })],
             body: raw(views.flightsPage({ values, result, error, providers: flights.providers })),
         });
     });
