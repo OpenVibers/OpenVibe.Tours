@@ -18,6 +18,11 @@ check('stripWiki keeps the last character, follows links and removes templates, 
     assert.strictEqual(stripWiki('Ueno Park'), 'Ueno Park');
     assert.strictEqual(stripWiki("[[Tokyo/Asakusa|Asakusa]]'s '''Senso-ji''' is [[Buddhist]].", {}), "Asakusa's Senso-ji is Buddhist.");
     assert.strictEqual(stripWiki('A {{m|28}} statue<ref>source</ref>'), 'A statue');
+    // Inline templates that carry words are kept as text (Chongqing's lead ended "covers ." on 2026-11-02).
+    assert.strictEqual(stripWiki('It covers {{convert|82400|km2|sqmi}}.'), 'It covers 82,400 km².');
+    assert.strictEqual(stripWiki('{{convert|20|-|25|km}} away, {{convert|5|to|10|mi}}'), '20–25 km away, 5 to 10 mi');
+    assert.strictEqual(stripWiki('Chongqing ({{lang|zh|重庆}}) on {{w|Yangtze River|the Yangtze}} at {{IATA|CKG}}.'), 'Chongqing (重庆) on the Yangtze at CKG.');
+    assert.strictEqual(stripWiki('Left {{unknown|template}} out .'), 'Left out.');
     assert.strictEqual(stripWiki('[[File:Photo.jpg|thumb|Caption]] A temple.'), 'A temple.');
 });
 
