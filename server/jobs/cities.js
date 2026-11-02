@@ -30,13 +30,17 @@ function fileTitle(name) {
     return /^File:/i.test(s) ? s : `File:${s}`;
 }
 
+// A run under older rules is not fresh (jobs/index.js): inline-templates-1 keeps {{convert}}, {{lang}} and the like in the
+// summaries, so the first boot with it rewrites them.
+const CITIES_VERSION = 'inline-templates-1';
+
 function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
     const wikivoyage = createWikivoyage({ config, fetchImpl, pace: s.pace });
     const wikidata = createWikidata({ config, fetchImpl, pace: s.pace, log });
 
     async function runOnce({ limit = config.openData.cityLimit } = {}) {
         const catalog = loadCatalog(limit);
-        const result = { catalog: catalog.length, cities: 0, withSummary: 0, withSee: 0, districts: 0, skipped: [], errors: [] };
+        const result = { catalog: catalog.length, cities: 0, withSummary: 0, withSee: 0, districts: 0, skipped: [], errors: [], version: CITIES_VERSION };
 
         const qidMap = await wikidata.resolveQids(catalog.map((c) => c.wikipedia || c.name));
         const qids = [...qidMap.values()].map((v) => v.qid);
@@ -134,7 +138,7 @@ function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
         return result;
     }
 
-    return { runOnce, loadCatalog, pageUrl };
+    return { runOnce, loadCatalog, pageUrl, version: CITIES_VERSION };
 }
 
 module.exports = { createCitiesJob, loadCatalog };

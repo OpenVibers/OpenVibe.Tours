@@ -22,12 +22,44 @@ function matchingBrace(text, start) {
     return -1;
 }
 
+// Inline templates that carry the sentence's words are kept as their text; every other template goes. Removing
+// {{convert|82400|km2}} left Chongqing's lead "…and covers ." (production, 2026-11-02).
+const UNITS = { km2: 'km²', 'km²': 'km²', sqkm: 'km²', sqmi: 'sq mi', mi2: 'sq mi', km: 'km', mi: 'mi', m: 'm', ft: 'ft', ha: 'ha',
+    acre: 'acres', acres: 'acres', c: '°C', f: '°F', '°c': '°C', '°f': '°F', kg: 'kg', lb: 'lb', 'km/h': 'km/h', mph: 'mph', l: 'L' };
+const number = (v) => (/^-?\d+(\.\d+)?$/.test(String(v).trim()) ? Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(v).trim());
+function inlineTemplate(inner) {
+    const parts = splitParams(inner).map((x) => x.trim());
+    const name = String(parts[0] || '').toLowerCase().replace(/_/g, ' ').trim();
+    const pos = parts.slice(1).filter((x) => !/^[a-z_ -]+=/i.test(x));
+    const named = paramsOf(inner);
+    if (name === 'convert' || name === 'cvt') {
+        if (!pos[0]) return '';
+        // {{convert|20|-|25|km}}, {{convert|5|to|10|mi}}: a range
+        if (['-', '–', 'to', 'and'].includes(String(pos[1]).toLowerCase()) && pos[2]) {
+            const unit = UNITS[String(pos[3] || '').toLowerCase()] || pos[3] || '';
+            return `${number(pos[0])}${pos[1] === 'to' || pos[1] === 'and' ? ` ${pos[1]} ` : '–'}${number(pos[2])}${unit ? ` ${unit}` : ''}`;
+        }
+        const unit = UNITS[String(pos[1] || '').toLowerCase()] || pos[1] || '';
+        return `${number(pos[0])}${unit ? ` ${unit}` : ''}`;
+    }
+    if (name === 'lang' || name === 'lang-zh') return pos[pos.length - 1] || '';
+    if (name === 'nowrap' || name === 'nobr' || name === 'small' || name === 'iata' || name === 'icao') return pos[0] || '';
+    if (name === 'w' || name === 'wp') return pos[1] || pos[0] || '';
+    if (name === 'marker') return named.name || '';
+    return null;
+}
+
 function removeTemplates(text) {
     let out = '';
     for (let i = 0; i < text.length; i += 1) {
         if (text[i] === '{' && text[i + 1] === '{') {
             const end = matchingBrace(text, i);
-            if (end > 0) { i = end - 1; continue; }
+            if (end > 0) {
+                const kept = inlineTemplate(text.slice(i + 2, end - 2));
+                if (kept) out += removeTemplates(kept);
+                i = end - 1;
+                continue;
+            }
         }
         out += text[i];
     }
@@ -64,7 +96,9 @@ function stripWiki(value, { max = 1200 } = {}) {
     s = s.replace(/<\/?[a-z][^>]*>/gi, ' ');
     s = s.replace(/\{\{|\}\}/g, ' ');
     for (const [k, v] of Object.entries(ENTITIES)) s = s.split(k).join(v);
-    s = s.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, ' ').trim();
+    s = s.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, ' ');
+    // A space a removed template left before punctuation, and an empty bracket pair.
+    s = s.replace(/\(\s*\)/g, '').replace(/\s+([.,;:!?])/g, '$1').replace(/[ ]{2,}/g, ' ').trim();
     return s.slice(0, max);
 }
 

@@ -25,7 +25,7 @@ function createJobs({ config, s, store, fetchImpl = globalThis.fetch, log = cons
     };
 
     const jobs = {
-        cities: { run: creators.cities.runOnce, maxAgeMs: config.jobs.citiesEveryMs, intervalMs: config.jobs.citiesEveryMs },
+        cities: { run: creators.cities.runOnce, maxAgeMs: config.jobs.citiesEveryMs, intervalMs: config.jobs.citiesEveryMs, version: creators.cities.version },
         places: { run: creators.places.runOnce, maxAgeMs: config.jobs.placesEveryMs, intervalMs: config.jobs.placesEveryMs, version: creators.places.version },
         routes: { run: creators.routes.runOnce, maxAgeMs: config.jobs.routesEveryMs, intervalMs: config.jobs.routesEveryMs, version: creators.routes.version },
         live: { run: creators.live.runOnce, maxAgeMs: config.jobs.liveEveryMs, intervalMs: config.jobs.liveEveryMs },
