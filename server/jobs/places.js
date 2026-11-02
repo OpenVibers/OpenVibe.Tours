@@ -14,9 +14,9 @@ const { createOverpass } = require('../sources/osm');
 const { parseCityPage } = require('../sources/wikivoyage');
 const { stableId } = require('../store');
 
-// A run under older rules is not fresh (jobs/index.js): name-en-1 stores OpenStreetMap's English names, so the first
-// boot with it refreshes the cities marked by migration 0004.
-const PLACES_VERSION = 'name-en-1';
+// A run under older rules is not fresh (jobs/index.js): name-en-1 stored OpenStreetMap's English names; wv-text-1
+// rewrites the stored Wikivoyage places' text with the current parser.
+const PLACES_VERSION = 'wv-text-1';
 
 const R = 6_371_000;
 function distanceM(a, b) {
@@ -50,11 +50,16 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             const name = String(listing.name || '').trim();
             if (!name) continue;
             const key = name.toLowerCase();
-            if (existing.some((p) => p.name.toLowerCase() === key || distanceM(p, listing) <= 120)) continue;
+            const osmId = stableId('wv', `${city.id}:${key}:${listing.lat}:${listing.lon}`);
+            // A Wikivoyage place already stored is written again, so its text follows the parser (a description stored
+            // before {{acre|107}} was read kept "Covering , the court complex", 2026-11-02); any other place near or
+            // of the same name still wins.
+            const same = existing.some((p) => p.osm_type === 'wikivoyage' && p.osm_id === osmId);
+            if (!same && existing.some((p) => p.name.toLowerCase() === key || distanceM(p, listing) <= 120)) continue;
             const place = {
                 cityId: city.id,
                 osmType: 'wikivoyage',
-                osmId: stableId('wv', `${city.id}:${key}:${listing.lat}:${listing.lon}`),
+                osmId,
                 name,
                 kind: 'attraction',
                 lat: Number(listing.lat),

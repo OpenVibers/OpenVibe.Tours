@@ -19,6 +19,9 @@ check('stripWiki keeps the last character, follows links and removes templates, 
     assert.strictEqual(stripWiki("[[Tokyo/Asakusa|Asakusa]]'s '''Senso-ji''' is [[Buddhist]].", {}), "Asakusa's Senso-ji is Buddhist.");
     assert.strictEqual(stripWiki('A {{m|28}} statue<ref>source</ref>'), 'A 28 m statue', 'a unit template keeps its measure');
     assert.strictEqual(stripWiki('It covers {{km2|82,403}}.'), 'It covers 82,403 km².');
+    assert.strictEqual(stripWiki('A group of gardens form a {{unesco}}.'), 'A group of gardens form a UNESCO World Heritage Site.');
+    assert.strictEqual(stripWiki('the {{rint|losangeles|b}} and {{rint|losangeles|d}} Lines'), 'the B and D Lines');
+    assert.strictEqual(stripWiki('Covering {{acre|107}}, the court complex'), 'Covering 107 acres, the court complex');
     // Inline templates that carry words are kept as text (Chongqing's lead ended "covers ." on 2026-11-02).
     assert.strictEqual(stripWiki('It covers {{convert|82400|km2|sqmi}}.'), 'It covers 82,400 km².');
     assert.strictEqual(stripWiki('{{convert|20|-|25|km}} away, {{convert|5|to|10|mi}}'), '20–25 km away, 5 to 10 mi');

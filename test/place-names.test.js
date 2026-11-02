@@ -56,7 +56,7 @@ const node = (tags) => ({ type: 'node', id: 9001, lat: 29.56, lon: 106.58, tags:
             const runs = await t.ctx.store.latestJobRuns();
             const places = runs.find((r) => r.job === 'places');
             const counts = typeof places.counts === 'string' ? JSON.parse(places.counts) : places.counts;
-            assert.strictEqual(counts.version, 'name-en-1');
+            assert.strictEqual(counts.version, require('../server/jobs/places').createPlacesJob({ config: t.config, s: t.ctx.s, store: t.ctx.store }).version);
         });
 
         await check('the migration marks a city by a name with no Latin letter, not by an accent', async () => {

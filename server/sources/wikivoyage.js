@@ -46,6 +46,9 @@ function inlineTemplate(inner) {
     // Wikivoyage's unit templates: {{km2|82,403}} is "82,403 km²" ("…and covers ." for Chongqing, 2026-11-02), {{m|28}}
     // is "28 m".
     if (UNIT_TEMPLATES[name] && pos[0]) return `${number(pos[0])} ${UNIT_TEMPLATES[name]}`;
+    if (name === 'unesco') return 'UNESCO World Heritage Site';
+    // A rail line's badge ({{rint|losangeles|b}}): its letter or number, as the badge reads.
+    if ((name === 'rint' || name === 'rail-interchange') && pos[1]) return String(pos[1]).toUpperCase();
     if (name === 'lang' || name === 'lang-zh') return pos[pos.length - 1] || '';
     if (name === 'nowrap' || name === 'nobr' || name === 'small' || name === 'iata' || name === 'icao') return pos[0] || '';
     if (name === 'w' || name === 'wp') return pos[1] || pos[0] || '';
