@@ -26,11 +26,8 @@ function homeJsonLd(config) {
         seo.jsonLd.website({ name: SITE_NAME, url: site, description: DESCRIPTION, searchUrl: `${site}/cities?q={q}` }),
         seo.jsonLd.softwareApp({ name: SITE_NAME, url: site, description: DESCRIPTION, category: 'TravelApplication', keywords: 'openvibe tours, travel, places, self-guided routes, live tours, stays, flights, openstreetmap, wikivoyage, wikidata' }),
         seo.jsonLd.webPage({ name: SITE_NAME, url: `${site}/`, description: DESCRIPTION, siteUrl: site }),
-        seo.jsonLd.faq([
-            { q: 'Where does OpenVibe.Tours get its data?', a: 'OpenStreetMap (ODbL), Wikivoyage (CC BY-SA), Wikidata (CC0), OpenVibe.Live\'s public stream list and OpenVibe.Rent\'s public listings. Every item carries its source and the time it was fetched.' },
-            { q: 'Are the routes guided tours?', a: 'No. They are self-guided walks generated from Wikivoyage See lists and marked as generated, with a cited note at every stop.' },
-            { q: 'Does OpenVibe.Tours sell flights or stays?', a: 'No. There is no flight API key in v1: the flight form links the official airline-neutral search with no affiliate parameter. Stays link to OpenVibe.Rent; no payment is handled on Tours.' },
-        ]),
+        // The same questions the home shows (the release check: structured data names what is on the page).
+        seo.jsonLd.faq(require('../views').HOME_FAQ.map(([q, a]) => ({ q, a }))),
     ];
 }
 

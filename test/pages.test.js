@@ -25,6 +25,13 @@ const { seed } = require('./helpers/seed');
             assert.match(r.text, /href="\/routes\/rte_/);
             assert.match(r.text, /href="\/stays"/);
             assert.match(r.text, /TouristAttraction|TouristDestination|FAQPage/);
+            // The FAQPage data asks exactly the questions the page shows (structured data names what is on the page).
+            const ld = [...r.text.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => [].concat(JSON.parse(m[1])))
+                .flatMap((x) => (x['@graph'] ? x['@graph'] : [x]));
+            const faq = ld.find((x) => x['@type'] === 'FAQPage');
+            assert.ok(faq && faq.mainEntity.length >= 3, 'the FAQPage data');
+            const shown = r.text.replace(/<script[\s\S]*?<\/script>/g, '');
+            for (const q of faq.mainEntity) assert.ok(shown.includes(q.name.replace(/'/g, '&#39;')) || shown.includes(q.name), `asked on the page: ${q.name}`);
             assert.match(r.text, /<main id="main"/);
         });
 
