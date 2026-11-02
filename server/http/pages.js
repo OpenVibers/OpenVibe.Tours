@@ -109,11 +109,12 @@ function createPageRoutes(ctx) {
             signedIn(req) ? store.tripsForSubject(req.viewer.subject) : Promise.resolve([]),
         ]);
         return page(req, res, {
-            index: true, cache: PUBLIC_CACHE, title: place.name,
-            description: place.description || `${place.name} in ${place.city_name}: coordinates, address, opening hours, source and map.`,
+            index: true, cache: PUBLIC_CACHE, title: views.localName(place) ? `${views.placeName(place)} (${place.name})` : place.name,
+            description: place.description || `${views.placeName(place)} in ${place.city_name}: coordinates, address, opening hours, source and map.`,
             jsonLd: [
                 {
-                    '@context': 'https://schema.org', '@type': 'TouristAttraction', name: place.name,
+                    '@context': 'https://schema.org', '@type': 'TouristAttraction', name: views.placeName(place),
+                    ...(views.localName(place) ? { alternateName: place.name } : {}),
                     url: `${base()}/place/${place.id}`, description: place.description || undefined,
                     geo: { '@type': 'GeoCoordinates', latitude: place.lat, longitude: place.lon },
                     ...(place.address ? { address: { '@type': 'PostalAddress', streetAddress: place.address, addressLocality: place.city_name } } : {}),
@@ -121,7 +122,7 @@ function createPageRoutes(ctx) {
                     ...(place.fee === 'no' ? { isAccessibleForFree: true } : place.fee === 'yes' ? { isAccessibleForFree: false } : {}),
                     sameAs: [place.osm_url],
                 },
-                seo.jsonLd.breadcrumbs([{ name: 'Cities', url: `${base()}/cities` }, { name: place.city_name, url: `${base()}/city/${place.city_slug}` }, { name: place.name, url: `${base()}/place/${place.id}` }]),
+                seo.jsonLd.breadcrumbs([{ name: 'Cities', url: `${base()}/cities` }, { name: place.city_name, url: `${base()}/city/${place.city_slug}` }, { name: views.placeName(place), url: `${base()}/place/${place.id}` }]),
             ],
             body: raw(views.placePage({ place, routeList, trips })),
         });
