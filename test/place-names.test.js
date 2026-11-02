@@ -42,6 +42,13 @@ const node = (tags) => ({ type: 'node', id: 9001, lat: 29.56, lon: 106.58, tags:
             assert.match(r.text, /<strong>Hongya Cave<\/strong><span class="tr-muted">洪崖洞 · attraction/);
         });
 
+        await check('a row leaves out a kind its name already says, and the facts join without a stray separator', async () => {
+            const views = require('../server/views');
+            assert.strictEqual(views.kindUnlessNamed({ name: 'Bose museum', kind: 'museum' }), '');
+            assert.strictEqual(views.kindUnlessNamed({ name: 'Old Tower', kind: 'attraction' }), 'attraction');
+            assert.strictEqual(views.kindUnlessNamed({ name: '马迭尔宾馆', name_en: 'Modern Hotel', kind: 'hotel' }), '');
+        });
+
         await check('the Search document is titled with both names, and the sweep sends it', async () => {
             assert.strictEqual(describePlace({ name: '洪崖洞', name_en: 'Hongya Cave', kind: 'attraction', city_name: 'Chongqing', country: 'China' }).title, 'Hongya Cave (洪崖洞)');
             assert.strictEqual(describePlace({ name: 'Old Tower', name_en: null, kind: 'attraction', city_name: 'X', country: 'Y' }).title, 'Old Tower');
