@@ -132,7 +132,11 @@ function createWikidata({ config, fetchImpl, pace, log = console }) {
                 if (!info) continue;
                 const meta = info.extmetadata || {};
                 const val = (k) => (meta[k] && meta[k].value ? String(meta[k].value) : null);
-                const strip = (s) => (s ? s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : null);
+                // Commons' Artist is HTML: a tag becomes a space, then the space before punctuation and a trailing full
+                // stop go ("Ramir Borja</a>." read "Ramir Borja ." beside the licence, 2026-11-02).
+                const ENT = { '&amp;': '&', '&quot;': '"', '&#39;': "'", '&lt;': '<', '&gt;': '>', '&nbsp;': ' ' };
+                const strip = (s) => (s ? s.replace(/<[^>]*>/g, ' ').replace(/&(amp|quot|#39|lt|gt|nbsp);/g, (e) => ENT[e]).replace(/\s+/g, ' ')
+                    .replace(/\s+([.,;:!?])/g, '$1').replace(/[\s.]+$/, '').trim() || null : null);
                 out.set(String(page.title), {
                     url: info.thumburl || info.url || null,
                     credit: strip(val('Artist')) || strip(val('Credit')) || 'Wikimedia Commons',
