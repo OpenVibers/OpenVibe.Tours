@@ -125,6 +125,19 @@ const { seed } = require('./helpers/seed');
             const llms = await t.get('/llms.txt');
             assert.strictEqual(llms.status, 200);
             assert.match(llms.text, /OpenVibe\.Tours/);
+            // AGT-5: the home at /index.md, each page at its twin, Optional last.
+            assert.match(llms.text, /\[OpenVibe\.Tours\]\(https:\/\/openvibe\.tours\/index\.md\)/, 'the home is /index.md');
+            assert.match(llms.text, /\[Cities\]\(https:\/\/openvibe\.tours\/cities\.md\)/, 'a page is its twin');
+            assert.match(llms.text, /\[Cities \(JSON\)\]\(https:\/\/openvibe\.tours\/api\/v1\/cities\)/, 'an API URL keeps its URL');
+            assert.match(llms.text, /\n## Optional\n/);
+            assert.match(llms.text, /\n## Optional\n\n[\s\S]*\[Sitemap\]\(https:\/\/openvibe\.tours\/sitemap\.xml\)/);
+            assert.strictEqual(llms.text.lastIndexOf('\n## '), llms.text.indexOf('\n## Optional'), 'Optional is the last section');
+            const own = [...llms.text.matchAll(/\]\((https:\/\/openvibe\.tours[^)\s]*)\)( \(HTML\))?/g)];
+            assert.ok(own.length > 5, String(own.length));
+            for (const [, url, html] of own) {
+                const p = new URL(url).pathname;
+                assert.ok(p.endsWith('.md') || /\.[a-z0-9]+$/.test(p) || p.startsWith('/api/') || html, `${url} is a twin, a file or marked (HTML)`);
+            }
             const full = await t.get('/llms-full.txt');
             assert.strictEqual(full.status, 200);
             assert.match(full.text, /Lisbon/);

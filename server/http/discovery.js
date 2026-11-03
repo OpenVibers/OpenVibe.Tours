@@ -60,6 +60,10 @@ function createDiscoveryRoutes(ctx) {
     r.get('/llms.txt', (_req, res) => {
         res.type('text/plain').set('Cache-Control', TEXT).send(seo.llmsTxt({
             name: SITE_NAME,
+            // Each of this site's own pages is linked at its Markdown twin (AGT-5; openvibe-shared 4.108.0 leaves
+            // files, /api/ and /.well-known/ paths and other sites' links as they are).
+            markdown: true,
+            base: site,
             summary: DESCRIPTION,
             details: 'GET /api/v1/cities?limit=&offset=&q= lists the top cities; GET /api/v1/cities/:slug adds its places, routes, live tours and stays. GET /api/v1/places/:id and GET /api/v1/routes/:id return one place or one route with its ordered stops. GET /api/v1/live returns IRL tours now and recent IRL VODs. Trips are a signed-in person\'s own: the tours_at session cookie or a Network Bearer token. Every place is OpenStreetMap (ODbL) with its osm.org link and fetch time; route stops cite the Wikivoyage page (CC BY-SA); city images say their Commons licence. No route needs a service token. Flights have no API key in v1; the form only links the official airline-neutral search, with no affiliate.',
             sections: [
@@ -69,20 +73,21 @@ function createDiscoveryRoutes(ctx) {
                     { title: 'Routes', url: abs('/routes') },
                     { title: 'Live tours', url: abs('/live') },
                     { title: 'The API', url: abs('/developers') },
-                    { title: 'OpenAPI', url: abs('/api/v1/openapi.json') },
                 ] },
                 { title: 'Machine-readable', links: [
                     { title: 'Cities (JSON)', url: abs('/api/v1/cities') },
                     { title: 'Live (JSON)', url: abs('/api/v1/live') },
-                    { title: 'Sitemap', url: abs('/sitemap.xml') },
-                    { title: 'Full text for language models', url: abs('/llms-full.txt') },
-                    { title: 'Release metadata (JSON)', url: abs('/release.json') },
+                    { title: 'OpenAPI', url: abs('/api/v1/openapi.json') },
                 ] },
-                { title: 'Elsewhere', links: [
-                    { title: 'OpenVibe.Live', url: 'https://openvibe.live', note: 'the IRL streams' },
-                    { title: 'OpenVibe.Rent', url: 'https://openvibe.rent', note: 'the listings' },
-                    { title: 'OpenVibe.Network', url: 'https://openvibe.network', note: 'accounts and sign-in' },
-                ] },
+            ],
+            // llmstxt.org's "## Optional": what an agent may skip when it needs a shorter context.
+            optional: [
+                { title: 'Sitemap', url: abs('/sitemap.xml') },
+                { title: 'Full text for language models', url: abs('/llms-full.txt') },
+                { title: 'Release metadata (JSON)', url: abs('/release.json') },
+                { title: 'OpenVibe.Live', url: 'https://openvibe.live', note: 'the IRL streams' },
+                { title: 'OpenVibe.Rent', url: 'https://openvibe.rent', note: 'the listings' },
+                { title: 'OpenVibe.Network', url: 'https://openvibe.network', note: 'accounts and sign-in' },
             ],
         }));
     });
