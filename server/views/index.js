@@ -22,14 +22,18 @@ const day = (iso) => (iso ? esc(String(iso).slice(0, 10)) : '—');
 const when = (iso) => (iso ? esc(String(iso).replace('T', ' ').replace(/\.\d+Z$/, ' UTC').replace(/Z$/, ' UTC')) : '—');
 const km = (m) => (Number(m) >= 1000 ? `${(Number(m) / 1000).toFixed(1)} km` : `${Math.round(Number(m) || 0)} m`);
 const safeHttp = (v) => (typeof v === 'string' && /^https?:\/\//i.test(v) ? v : null);
-// A picture is drawn only from a URL that is one: Commons, or a path ending in an image type. A Wikivoyage listing's
-// image field sometimes holds a share link (photos.app.goo.gl), which drew a broken image on the home (2026-11-01).
+// A picture is drawn only from a URL that is one, on a host the page's img-src allows (server/app.js): Commons, or an
+// OpenVibe site's image. A Wikivoyage listing's image field sometimes holds a share link (photos.app.goo.gl), which drew
+// a broken image on the home (2026-11-01); an OSM image tag can name any host, and the place of the day asked for
+// images.mapillary.com, which the policy refuses and which no longer answers (2026-11-02).
+const IMAGE_HOSTS = /^(upload|commons|thumb)\.wikimedia\.org$|^openvibe\.(media|rent|live|network)$/i;
 const safeImage = (v) => {
     const u = safeHttp(v);
     if (!u) return null;
     try {
-        const { hostname, pathname } = new URL(u);
-        return /(^|\.)wikimedia\.org$/i.test(hostname) || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
+        const { protocol, hostname, pathname } = new URL(u);
+        if (protocol !== 'https:' || !IMAGE_HOSTS.test(hostname)) return null;
+        return /wikimedia\.org$/i.test(hostname) || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
     } catch { return null; }
 };
 const money = (n, c) => `${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${c}`;
