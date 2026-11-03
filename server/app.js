@@ -141,6 +141,8 @@ async function createApp(opts = {}) {
     // ── API ─────────────────────────────────────────────────
     app.use('/api/v1', rateLimit({ windowMs: 60_000, limit: Number(process.env.TOURS_API_RATE_LIMIT_PER_MIN) || 240, standardHeaders: true, legacyHeaders: false, handler: (req, res) => contracts.http.sendProblem(res, 429, 'rate_limited', { detail: 'too many requests from this address; retry shortly', ctx: req.ov }) }));
     app.use('/api/v1', createApi(ctx));
+    // GET /openapi.json (SEO-3): the API's OpenAPI 3.1 document, the same one /api/v1/openapi.json serves.
+    app.get('/openapi.json', (_req, res) => res.set('Cache-Control', 'public, max-age=3600').set('Access-Control-Allow-Origin', '*').json(require('./openapi').document));
     app.use('/api', (req, res) => contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'No such API route', ctx: req.ov }));
 
     // ── Pages ───────────────────────────────────────────────
