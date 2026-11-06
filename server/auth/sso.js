@@ -3,30 +3,28 @@
 /**
  * Sign-in with OpenVibe.Network: OAuth 2 authorization code with PKCE (S256), as OAuth client `tours`.
  *
- *   GET  /auth/login      → Network /oauth/authorize?…&code_challenge=…&code_challenge_method=S256
+ *   GET  /auth/login      → Network /oauth/authorize (openvibe-sdk/sso: state, PKCE S256)
  *                           (?silent=1 adds prompt=none; ?next= a same-site path)
  *   GET  /auth/callback   → state check, server-side code exchange (client secret + code_verifier)
+ *   GET  /auth/health     → does the Network accept this OAuth client? 503 only when it refuses it
  *   GET  /auth/logout     → clear cookies, revoke the refresh token (best effort)
  *   GET  /auth/me         → { user } for the shared navbar; { user: null } for a guest
  *
- * This is Fun's SSO module with the client id and cookie names changed. The person's Network access token lives
- * in an httpOnly cookie (fun_at) no script can read; the refresh token (fun_rt) is httpOnly too. Neither is ever
- * stored server-side, rendered or logged.
+ * The OAuth half is openvibe-sdk/sso's (createSsoClient): the authorize URL, the PKCE S256 pair, the code and
+ * refresh grants and the health check are the SDK's, not a hand copy. The session stays this site's own
+ * httpOnly cookie (tours_at), so no script can read the token; neither token is stored server-side, rendered or
+ * logged. The redirect URI is unchanged (<BASE_URL>/auth/callback).
  */
 const crypto = require('crypto');
 const express = require('express');
 const cache = require('openvibe-shared/cache-policy');
+const { createSsoClient, failurePage } = require('openvibe-sdk/sso');
 
 const ACCESS_COOKIE = 'tours_at';
 const REFRESH_COOKIE = 'tours_rt';
 const HINT_COOKIE = 'ov_sso_hint';
 const FLOW_COOKIE = 'tours_oauth';
-
-function pkcePair() {
-    const verifier = crypto.randomBytes(32).toString('base64url');
-    const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-    return { verifier, challenge };
-}
+const SITE_NAME = 'OpenVibe.Tours';
 
 function ownOrigins(config) {
     const out = new Set();
@@ -49,22 +47,22 @@ function sanitizeNext(next, config) {
     return next;
 }
 
-function authorizeUrl(config, { state, challenge, silent = false }) {
-    const q = new URLSearchParams({
-        response_type: 'code',
-        client_id: config.oauth.clientId,
-        redirect_uri: config.oauth.redirectUri,
-        scope: config.oauth.scope,
-        state,
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-    });
-    if (silent) q.set('prompt', 'none');
-    return `${config.networkUrl}/oauth/authorize?${q.toString()}`;
-}
-
 function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Date.now(), log = console }) {
     const cookieBase = () => ({ sameSite: 'lax', secure: config.cookies.secure, httpOnly: true, path: '/' });
+    const sdkSso = createSsoClient({
+        site: 'tours',
+        siteName: SITE_NAME,
+        baseUrl: config.baseUrl,
+        clientId: config.oauth.clientId,
+        clientSecret: config.oauth.clientSecret,
+        redirectUri: config.oauth.redirectUri,
+        scope: config.oauth.scope,
+        networkUrl: config.networkUrl,
+        networkInternalUrl: config.networkInternalUrl,
+        secureCookies: config.cookies.secure,
+        fetch: fetchImpl,
+        log,
+    });
 
     function setSession(res, data) {
         res.cookie(ACCESS_COOKIE, data.access_token, { ...cookieBase(), maxAge: 24 * 60 * 60 * 1000 });
@@ -74,26 +72,6 @@ function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Dat
     function clearSession(res) {
         res.clearCookie(ACCESS_COOKIE, cookieBase());
         res.clearCookie(REFRESH_COOKIE, cookieBase());
-    }
-
-    async function tokenGrant(fields) {
-        const body = new URLSearchParams({ client_id: config.oauth.clientId, client_secret: config.oauth.clientSecret, ...fields });
-        let res;
-        try {
-            res = await fetchImpl(`${config.networkInternalUrl}/oauth/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-                body, signal: AbortSignal.timeout(10_000),
-            });
-        } catch (err) {
-            throw Object.assign(new Error('OpenVibe.Network did not answer'), { status: 502, error: err && err.name === 'TimeoutError' ? 'timeout' : 'unreachable' });
-        }
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data || !data.access_token) {
-            throw Object.assign(new Error((data && (data.error_description || data.error)) || `token endpoint ${res.status}`),
-                { status: res.status, error: (data && data.error) || 'invalid_grant' });
-        }
-        return data;
     }
 
     /**
@@ -131,7 +109,7 @@ function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Dat
         const rt = req.cookies && req.cookies[REFRESH_COOKIE];
         if (!rt) return null;
         try {
-            const data = await tokenGrant({ grant_type: 'refresh_token', refresh_token: rt });
+            const data = await sdkSso.tokenGrant({ grant_type: 'refresh_token', refresh_token: rt });
             setSession(res, data);
             const v = await verifySession(data.access_token);
             return v.ok ? viewerFromClaims(v.claims, data.access_token) : null;
@@ -177,11 +155,10 @@ function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Dat
 
         r.get('/login', (req, res) => {
             const silent = Boolean(req.query.silent) && req.query.silent !== '0';
-            const state = crypto.randomBytes(16).toString('hex');
-            const { verifier, challenge } = pkcePair();
-            res.cookie(FLOW_COOKIE, JSON.stringify({ state, verifier, next: sanitizeNext(req.query.next, config), silent }), flowOpts());
+            const started = sdkSso.authorizeUrl({ silent });
+            res.cookie(FLOW_COOKIE, JSON.stringify({ state: started.state, verifier: started.verifier, next: sanitizeNext(req.query.next, config), silent }), flowOpts());
             res.set('Cache-Control', cache.htmlHeaders({ private: true }));
-            res.redirect(authorizeUrl(config, { state, challenge, silent }));
+            res.redirect(started.url);
         });
 
         r.get('/callback', async (req, res) => {
@@ -199,17 +176,57 @@ function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Dat
                 || state.length !== flow.state.length || !crypto.timingSafeEqual(Buffer.from(state), Buffer.from(flow.state))) {
                 return res.status(400).type('text/plain').send('Sign-in state did not match. Please try signing in again.');
             }
-            if (!code) return res.status(400).type('text/plain').send('The Network sent no authorization code.');
+            if (!code) {
+                return res.status(400).type('html').send(failurePage({
+                    siteName: SITE_NAME,
+                    title: 'Sign-in didn\'t finish',
+                    text: 'OpenVibe.Network sent no sign-in code. Start it again and it will go through; your account is fine.',
+                    retryHref: `/auth/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`,
+                    backHref: next || '/',
+                }));
+            }
             try {
-                const data = await tokenGrant({ grant_type: 'authorization_code', code: String(code), redirect_uri: config.oauth.redirectUri, code_verifier: flow.verifier });
+                const data = await sdkSso.tokenGrant({ grant_type: 'authorization_code', code: String(code), redirect_uri: config.oauth.redirectUri, code_verifier: flow.verifier });
                 setSession(res, data);
                 res.set('Clear-Site-Data', '"cache"');
                 return res.redirect(next);
             } catch (err) {
+                const clientRefused = err.status === 401 || err.error === 'invalid_client' || err.error === 'unauthorized_client';
+                if (clientRefused) {
+                    log.error(`[OpenVibe.Tours] the Network refuses this site's OAuth client (${err.error || err.status}): check OV_OAUTH_CLIENT_ID / OV_OAUTH_CLIENT_SECRET`);
+                    return res.status(500).type('html').send(failurePage({
+                        siteName: SITE_NAME,
+                        title: 'Sign-in isn\'t working on OpenVibe.Tours right now',
+                        text: 'This is a problem on our side, not with your account, and it has been logged. Please try again a little later.',
+                        retryHref: `/auth/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`,
+                        backHref: next || '/',
+                    }));
+                }
                 log.warn('[OpenVibe.Tours] sign-in exchange failed:', err.status || '', err.error || '');
-                return res.status(err.status && err.status < 500 ? 400 : 502).type('text/plain')
-                    .send(err.status && err.status < 500 ? 'The Network refused the sign-in code. Please sign in again.' : 'Sign-in failed: OpenVibe.Network did not answer. Please try again.');
+                if (err.status && err.status < 500) {
+                    return res.status(400).type('html').send(failurePage({
+                        siteName: SITE_NAME,
+                        title: 'Sign-in didn\'t finish',
+                        text: 'The Network no longer accepts that sign-in code. Start it again and it will go through; your account is fine.',
+                        retryHref: `/auth/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`,
+                        backHref: next || '/',
+                    }));
+                }
+                return res.status(502).type('html').send(failurePage({
+                    siteName: SITE_NAME,
+                    title: 'OpenVibe.Network didn\'t answer',
+                    text: 'Your account is fine: the sign-in service did not reply in time. Try again in a moment.',
+                    retryHref: `/auth/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`,
+                    backHref: next || '/',
+                }));
             }
+        });
+
+        // GET /auth/health: does the Network accept this site's OAuth client? 503 only when it refuses it.
+        r.get('/health', async (_req, res) => {
+            const client = await sdkSso.checkClient();
+            res.set('Cache-Control', 'no-store');
+            return res.status(client === 'invalid' ? 503 : 200).json({ ok: client !== 'invalid', client });
         });
 
         const sameOriginRequest = (req) => {
@@ -254,7 +271,7 @@ function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Dat
         return r;
     }
 
-    return { middleware, routes, asViewer, tokenGrant, pkcePair };
+    return { middleware, routes, asViewer, tokenGrant: sdkSso.tokenGrant };
 }
 
-module.exports = { createSso, pkcePair, sanitizeNext, ownOrigins, authorizeUrl, ACCESS_COOKIE, REFRESH_COOKIE };
+module.exports = { createSso, sanitizeNext, ownOrigins, ACCESS_COOKIE, REFRESH_COOKIE };
