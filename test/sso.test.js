@@ -21,8 +21,14 @@ const { sanitizeNext } = require('../server/auth/sso');
         assert.strictEqual(loc.searchParams.get('client_id'), 'tours');
         assert.strictEqual(loc.searchParams.get('code_challenge_method'), 'S256');
         assert.match(loc.searchParams.get('code_challenge'), /^[A-Za-z0-9_-]{43}$/);
-        assert.match(loc.searchParams.get('state'), /^[0-9a-f]{32}$/);
+        assert.match(loc.searchParams.get('state'), /^[A-Za-z0-9_-]{16,64}$/);
         assert.match(r.headers.get('set-cookie'), /tours_oauth=.*Path=\/auth.*HttpOnly/i);
+    });
+
+    await check('GET /auth/health: the Network accepts this OAuth client', async () => {
+        const r = await t.get('/auth/health');
+        assert.strictEqual(r.status, 200);
+        assert.deepStrictEqual(r.json(), { ok: true, client: 'ok' });
     });
 
     await check('callback exchanges the code with the matching verifier and sets httpOnly session cookies', async () => {
