@@ -182,7 +182,7 @@ async function startUpstreams() {
             }
             if (action === 'query' && url.searchParams.get('prop') === 'imageinfo') {
                 const titles = String(url.searchParams.get('titles') || '').split('|');
-                const pages = titles.map((t) => ({ title: t, imageinfo: [{ thumburl: 'https://upload.wikimedia.org/tours-test.jpg', url: 'https://upload.wikimedia.org/tours-test.jpg', extmetadata: { Artist: { value: '<a href="https://commons.wikimedia.org/wiki/User:A">A photographer</a> &amp; friends.' }, LicenseShortName: { value: 'CC BY-SA 4.0' }, LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0/' } } }] }));
+                const pages = titles.map((t) => ({ title: t, imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Tokyo_test.jpg/1200px-Tokyo_test.jpg', url: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Tokyo_test.jpg', extmetadata: { Artist: { value: '<a href="https://commons.wikimedia.org/wiki/User:A">A photographer</a> &amp; friends.' }, LicenseShortName: { value: 'CC BY-SA 4.0' }, LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0/' } } }] }));
                 return json(200, { query: { pages } });
             }
             return json(400, { error: 'unknown action' });

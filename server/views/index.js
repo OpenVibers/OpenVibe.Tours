@@ -36,6 +36,37 @@ const safeImage = (v) => {
         return /wikimedia\.org$/i.test(hostname) || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
     } catch { return null; }
 };
+// Wikimedia answers a width through the Special:FilePath redirect (OSM/place pictures) or the
+// "<n>px-" segment of a thumb URL (Commons' iiurlwidth, city pictures). Any other picture is
+// left as it is.
+function imageWidth(u, w) {
+    if (!u) return null;
+    try {
+        const url = new URL(u);
+        if (/(^|\.)commons\.wikimedia\.org$/i.test(url.hostname) && /^\/wiki\/Special:FilePath\//.test(url.pathname)) {
+            url.searchParams.set('width', String(w));
+            return url.toString();
+        }
+        if (/(^|\.)upload\.wikimedia\.org$/i.test(url.hostname) && /\/thumb\//.test(url.pathname)) {
+            return u.replace(/(\/)(\d+)px-/, `/$1${w}px-`);
+        }
+    } catch { /* not a URL: use it unchanged */ }
+    return null;
+}
+const IMAGE_WIDTHS = [330, 640];
+/** A picture at the widths a card draws (330 for a phone, 640 for a 2x screen), never the 1200 stored. */
+function pictureImg(u, { alt = '', sizes = '(max-width: 720px) 80vw, 330px', width = 640, height = 360, eager = false, widths = IMAGE_WIDTHS } = {}) {
+    const src = imageWidth(u, widths[widths.length - 1]) || u;
+    const pairs = widths.map((w) => [w, imageWidth(u, w)]).filter(([, v]) => v);
+    const srcset = pairs.length ? ` srcset="${esc(pairs.map(([w, v]) => `${v} ${w}w`).join(', '))}" sizes="${esc(sizes)}"` : '';
+    return `<img src="${esc(src)}"${srcset} width="${width}" height="${height}" alt="${esc(alt)}"${eager ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
+}
+/** kit.card with a Wikimedia picture resized to the card's 16:9 shape; any other card is unchanged. */
+function card(opts) {
+    const html = kit.card(opts);
+    if (!imageWidth(opts.image, IMAGE_WIDTHS[0])) return html;
+    return html.replace(/<img\b[^>]*>/, pictureImg(opts.image, { alt: opts.alt || '', sizes: '(max-width: 720px) 80vw, 330px' }));
+}
 const money = (n, c) => `${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${c}`;
 const pct = (n, total) => (total ? Math.round((Number(n) / Number(total)) * 100) : 0);
 
@@ -61,7 +92,7 @@ ${[[92, 230], [150, 200], [188, 224], [238, 178], [292, 194], [318, 158]].map(([
 <span class="tr-vis-badge">fly · stay · walk · watch</span></div>`;
 }
 
-const cityCard = (c) => kit.card({
+const cityCard = (c) => card({
     href: `/city/${c.slug}`,
     title: c.name,
     type: 'map',
@@ -81,7 +112,7 @@ const localName = (p) => (p && p.name_en && p.name && p.name !== p.name_en ? p.n
 /** A place's kind for its row, unless its name already ends with it ("Bose museum" was followed by "museum"). */
 const kindUnlessNamed = (p) => { const k = String(p.kind || '').replace(/_/g, ' '); return k && !placeName(p).toLowerCase().endsWith(k.toLowerCase()) ? k : ''; };
 
-const placeCard = (p) => kit.card({
+const placeCard = (p) => card({
     href: `/place/${p.id}`,
     title: placeName(p),
     type: 'map',
@@ -136,7 +167,7 @@ function placeOfDayCard(p) {
     if (!p) return '';
     return `<article class="tr-pod" data-place="${esc(p.id)}">
 <a class="tr-pod-link" href="/place/${esc(p.id)}">
-${safeImage(p.image_url) ? `<img src="${esc(p.image_url)}" alt="${esc(placeName(p))}" loading="lazy" decoding="async">` : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
+${safeImage(p.image_url) ? pictureImg(p.image_url, { alt: placeName(p) }) : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
 <span class="tr-pod-body"><span class="tr-kicker">Place of the day · ${esc(p.city_name || '')}</span><strong>${esc(placeName(p))}</strong>
 <span class="tr-muted">${esc(p.kind ? p.kind.replace(/_/g, ' ') : 'place')}${p.description ? ` · ${esc(clip(p.description, 150))}` : ''}</span></span>
 </a></article>`;
@@ -256,7 +287,7 @@ function citiesPage({ cities = [], q = '' } = {}) {
 <p class="tr-lede">Coordinates and population from Wikidata, the page and its See list from Wikivoyage, places from OpenStreetMap. A city page lists its places, routes, live tours and stays.</p>
 <form class="tr-form tr-form-inline" method="get" action="/cities" role="search"><label class="tr-field"><span>Find a city</span><input type="search" name="q" value="${esc(q)}" maxlength="80" placeholder="Lisbon"></label><button class="tr-btn" type="submit">Search</button></form></header>
 ${cities.length ? `<ol class="tr-city-list">${cities.map((c) => `<li class="tr-city-row"><a href="/city/${esc(c.slug)}">
-<span class="tr-city-photo">${safeImage(c.image_url) ? `<img src="${esc(c.image_url)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">◆</span>'}</span>
+<span class="tr-city-photo">${safeImage(c.image_url) ? pictureImg(c.image_url, { alt: '', sizes: '58px', width: 58, height: 44, widths: [160, 330] }) : '<span aria-hidden="true">◆</span>'}</span>
 <span class="tr-city-text"><strong>${esc(c.name)}</strong><span class="tr-muted">${esc(c.country)}${c.population ? ` · ${Number(c.population).toLocaleString('en-US')} people` : ''}</span>
 <span class="tr-muted">${Number(c.place_count) || 0} places · ${Number(c.route_count) || 0} routes</span></span></a></li>`).join('')}</ol>` : empty('No city matched that search.', '/cities', 'See all cities')}
 <p class="tr-fine">${SOURCE.wikidata} · ${SOURCE.wikivoyage} · ${SOURCE.osm}</p>
