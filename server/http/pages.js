@@ -263,11 +263,16 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
             return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, 404);
         }
         const cities = out.canEdit ? await store.listCities({ limit: 100 }) : [];
+        const reader = signedIn(req);
         return page(req, res, {
-            index: false, cache: out.audience === 'link' || out.audience === 'public' ? 'public, max-age=60' : null,
+            // Only a signed-out reader's copy of a link/public trip may sit in a shared cache. A signed-in reader's
+            // copy carries the Share sheet's kind/id (and, for its owner, the people it is shared with), so it is
+            // private, no-store — send() also makes any signed-in page private.
+            index: false,
+            cache: !reader && (out.audience === 'link' || out.audience === 'public') ? 'public, max-age=60' : null,
             head: SHARE_HEAD,
             title: out.trip.title, jsonLd: [tripJsonLd(out.trip, out.route)],
-            body: raw(views.tripPage({ ...out, cities })),
+            body: raw(views.tripPage({ ...out, cities, canShare: reader })),
         });
     });
 

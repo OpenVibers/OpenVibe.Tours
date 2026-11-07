@@ -398,7 +398,7 @@ ${trips.length ? `<ol class="tr-trip-list">${trips.map((t) => `<li><a href="/tri
 </div>`;
 }
 
-function tripPage({ trip, mine = false, canEdit = false, audience = null, cities = [], places = [], route = null, stays = [] } = {}) {
+function tripPage({ trip, mine = false, canEdit = false, canShare = false, audience = null, cities = [], places = [], route = null, stays = [] } = {}) {
     const shareUrl = `/trips/${trip.slug}`;
     const audienceText = { public: 'Everyone', link: 'Anyone with the link', people: 'Specific people', private: 'Only me' };
     const who = audienceText[audience] || (trip.visibility === 'shared' ? 'Anyone with the link' : 'Only me');
@@ -407,7 +407,7 @@ function tripPage({ trip, mine = false, canEdit = false, audience = null, cities
 <header class="tr-page-h"><p class="tr-kicker">${esc(trip.city_name || '')} · ${day(trip.starts_on)} to ${day(trip.ends_on)}</p><h1>${esc(trip.title)}</h1>
 ${trip.notes ? `<p class="tr-lede">${esc(trip.notes)}</p>` : ''}
 <p class="tr-fine"><span class="tr-visibility">${esc(who)}</span>${mine ? '' : ' · you are reading a shared trip'} · last changed ${when(trip.updated_at)}</p>
-<p><button type="button" class="tr-btn tr-btn-quiet" data-ov-share-sheet data-kind="trip" data-id="${esc(trip.slug)}" data-title="${esc(trip.title)}">Share</button></p></header>
+${canShare ? `<p><button type="button" class="tr-btn tr-btn-quiet" data-ov-share-sheet data-kind="trip" data-id="${esc(trip.slug)}" data-title="${esc(trip.title)}">Share</button></p>` : ''}</header>
 ${canEdit ? `<section class="tr-sec tr-card"><h2>Share and edit</h2><p class="tr-muted">${who === 'Only me' ? 'Only you can read it.' : who === 'Anyone with the link' ? 'Anyone with this link can read it.' : who === 'Specific people' ? 'Only you and the people on the list can open it.' : 'Everyone can read it.'}</p><p><code>${esc(shareUrl)}</code></p>
 <details class="tr-edit"><summary>Edit the name, city and dates</summary><form class="tr-form" method="post" action="/trips/${esc(trip.slug)}/edit">
 <label class="tr-field"><span>Trip name</span><input name="title" value="${esc(trip.title)}" maxlength="120" required></label>
@@ -433,20 +433,15 @@ ${mine ? `<section class="tr-sec tr-card"><h2>Delete this trip</h2><form method=
 
 /**
  * The page a person not on a Specific-people trip's list sees: the audience, never the title, the places, the notes
- * or the route. The script offers "Ask for access" to somebody signed in and "Sign in" to everybody else.
+ * or the route. openvibe-shared 4.123.0 draws the card from this markup (no inline script, so a strict CSP needs
+ * nothing and every value is escaped like any other attribute).
  */
 function tripGate({ slug, signedInAs = '', signInUrl = '/auth/login' } = {}) {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-trip-gate">
 <header class="tr-page-h"><p class="tr-kicker">Trips</p><h1>A trip shared with specific people</h1>
 <p class="tr-lede">Sign in with the OpenVibe account it was shared with, or ask its owner for access.</p></header>
-<div id="tr-share-gate"><p><a class="tr-btn" href="${esc(signInUrl)}">Sign in</a></p></div>
-<script>
-window.addEventListener('DOMContentLoaded', function () {
-  var el = document.getElementById('tr-share-gate');
-  if (el && window.OVShare) OVShare.gate(el, { kind: 'trip', id: ${JSON.stringify(String(slug))},
-    signedInAs: ${JSON.stringify(String(signedInAs || ''))}, signInUrl: ${JSON.stringify(String(signInUrl || '/auth/login'))} });
-});
-</script></div>`;
+<div id="trip-share-gate" data-ov-share-gate data-kind="trip" data-id="${esc(slug)}" data-signed-in-as="${esc(signedInAs)}" data-sign-in-url="${esc(signInUrl)}">This is shared with specific people. Sign in with the OpenVibe account it was shared with, or ask its owner for access.</div>
+</div>`;
 }
 
 function developersPage({ jobs = [] } = {}) {

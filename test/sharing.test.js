@@ -109,8 +109,32 @@ const { seed } = require('./helpers/seed');
             assert.strictEqual((await t.get(`/trips/${next}`)).status, 200, 'the next trip follows the default');
         });
 
-        await check('a trip is never on a gathered page: not the sitemap, not llms.txt', async () => {
+        await check('a public trip: the owner\'s copy is private, no-store; the signed-out copy has no sheet data', async () => {
             const next = await newTrip(kim, 'A public trip');
+            await setShare(next, { audience: 'public' }, kim);
+            const mine = await t.get(`/trips/${next}`, { as: kim });
+            assert.strictEqual(mine.status, 200);
+            assert.match(mine.headers.get('cache-control'), /private/);
+            assert.match(mine.headers.get('cache-control'), /no-store/);
+            assert.ok(mine.text.includes('data-kind="trip"'), 'the owner gets the Share sheet');
+            const anon = await t.get(`/trips/${next}`);
+            assert.strictEqual(anon.status, 200);
+            assert.match(anon.headers.get('cache-control'), /public/);
+            assert.ok(!anon.text.includes('data-kind='), 'a shared cache never stores the sheet\'s kind');
+            assert.ok(!anon.text.includes('data-id='), 'nor its id');
+            assert.ok(!anon.text.includes('data-ov-share-sheet'), 'and the signed-out page carries no Share button');
+            // Now the gathered-page rule on the same trip.
+            const sitemap = await t.get('/sitemap.xml');
+            assert.strictEqual(sitemap.status, 200);
+            assert.ok(!sitemap.text.includes(next), 'a trip is not in the sitemap, even Everyone');
+            const llms = await t.get('/llms.txt');
+            assert.ok(!llms.text.includes(next), 'a trip is not in llms.txt');
+            const robots = await t.get('/robots.txt');
+            assert.ok(/Disallow: \/trips/.test(robots.text));
+        });
+
+        await check('a trip is never on a gathered page: not the sitemap, not llms.txt', async () => {
+            const next = await newTrip(kim, 'A second public trip');
             await setShare(next, { audience: 'public' }, kim);
             const sitemap = await t.get('/sitemap.xml');
             assert.strictEqual(sitemap.status, 200);
