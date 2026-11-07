@@ -152,7 +152,28 @@ const HOME_FAQ = [
     ['Why is a city missing?', 'The v1 catalogue is the top 100 cities by population; every city is fetched from Wikidata and Wikivoyage. A failed source run leaves the previous data and says so in the job receipt rather than inventing a place.'],
 ];
 
-function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities = [], routes = [], stays = [], jobs = [] } = {}) {
+/** The walk scene: the first real route's own first stops, each linked from the route page. */
+function homeWalk(route) {
+    const stops = route && Array.isArray(route.stops) ? route.stops.slice(0, 3) : [];
+    if (!stops.length) {
+        return `<div class="tr-demo-walk"><span class="tr-demo-stop">No route built yet</span><small>Routes are generated from a city's Wikivoyage See list; the first one shows here.</small><a href="/routes">Find a walk</a></div>`;
+    }
+    const named = stops.map((s, i) => `<span class="tr-demo-stop">${i + 1} · ${esc(s.title)}</span>`).join('<span class="tr-demo-line"></span>');
+    return `<div class="tr-demo-walk">${named}<small>${esc(route.title || 'A walk')}${route.city_name ? ` · ${esc(route.city_name)}` : ''} · <a href="/routes/${esc(route.slug)}">the route</a> · Wikivoyage CC BY-SA · OpenStreetMap ODbL</small></div>`;
+}
+
+/** The live scene: the first real IRL stream, else the first real recording, else an honest "nobody is live". */
+function homeLive(live, recent) {
+    const l = (live && live[0]) || (recent && recent[0]) || null;
+    if (!l) {
+        return `<div class="tr-demo-live"><span class="tr-live-dot" aria-hidden="true"></span><b>Nobody is live right now</b><span>IRL streams from OpenVibe.Live show here when they start.</span><small>No follow, no write, no token.</small></div>`;
+    }
+    const isLive = l.kind === 'stream';
+    const meta = [l.category, isLive && Number(l.viewer_count) ? `${Number(l.viewer_count)} watching` : '', 'OpenVibe.Live'].filter(Boolean).join(' · ');
+    return `<div class="tr-demo-live"><span class="tr-live-dot" aria-hidden="true"></span><b>${isLive ? 'Live now' : 'Recent recording'}</b><span>${esc(l.title)}${l.display_name || l.username ? ` · ${esc(l.display_name || l.username)}` : ''}</span><small>${esc(meta)} · <a href="${esc(l.url)}" rel="noopener">watch</a></small></div>`;
+}
+
+function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities = [], routes = [], stays = [], jobs = [], route = null } = {}) {
     const rails = [
         // Real first (the owner, 10-31): live tours when someone is live, else the recordings; never an empty rail.
         live.length ? { id: 'tr-live', title: 'Live tours now', more: { href: '/live', label: 'All live tours' }, items: live.map(liveCard), size: 'm' } : null,
@@ -184,19 +205,19 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
             {
                 title: 'Walk a city with a cited note at every stop',
                 text: 'A route is ordered stops on a map, generated from Wikivoyage\'s See lists and marked as generated. Every stop links the Wikivoyage page it came from, the OpenStreetMap place it matches, and its coordinates.',
-                html: `<div class="tr-demo-walk"><span class="tr-demo-stop">1 · Castelo de São Jorge</span><span class="tr-demo-line"></span><span class="tr-demo-stop">2 · Lisbon Cathedral</span><span class="tr-demo-line"></span><span class="tr-demo-stop">3 · Miradouro de Santa Luzia</span><small>Wikivoyage CC BY-SA · OpenStreetMap ODbL</small></div>`,
+                html: homeWalk(route),
                 action: { href: '/routes', label: 'Find a walk' },
             },
             {
                 title: 'Watch a real place, now',
                 text: 'Live tours are IRL streams from OpenVibe.Live\'s public stream list, with the viewer count and the city when the title or tags name one. Recorded IRL tours link to their VOD and clips to openvibe.video. Tours never posts to Live or chat.',
-                html: `<div class="tr-demo-live"><span class="tr-live-dot"></span><b>Live now</b><span>Category IRL · OpenVibe.Live</span><small>No follow, no write, no token.</small></div>`,
+                html: homeLive(live, recent),
                 action: { href: '/live', label: 'Watch live tours' },
             },
             {
                 title: 'Build a trip and share it read-only',
                 text: 'Sign in with OpenVibe, pick a city and dates, save places, add a route and a stay, then share it with the people going with you. Can edit means they plan it with you; Group voting is not in v1.',
-                html: `<div class="tr-demo-trip"><span class="tr-trip-day">Fri</span><b>Land · check in</b><span class="tr-trip-day">Sat</span><b>Walk the See list</b><span class="tr-trip-day">Sun</span><b>Market, then home</b><small>Private by default · shared on purpose</small></div>`,
+                html: `<div class="tr-demo-trip"><span class="tr-trip-day">Fri</span><b>Land · check in</b><span class="tr-trip-day">Sat</span><b>Walk the See list</b><span class="tr-trip-day">Sun</span><b>Market, then home</b><small>Example itinerary · private by default · shared on purpose</small></div>`,
                 action: { href: '/trips/new', label: 'Plan a trip' },
             },
         ],
