@@ -99,7 +99,7 @@ needs a service token.
 | `GET /api/v1/openapi.json` | the OpenAPI 3.1 document |
 | `GET /api/v1/trips` | the signed-in person's trips |
 | `POST /api/v1/trips` | create `{ title, city_slug, starts_on, ends_on, notes?, visibility? }` |
-| `GET /api/v1/trips/:slug` | own trip, or a shared one read-only |
+| `GET /api/v1/trips/:slug` | own trip, or one shared with you |
 | `PATCH /api/v1/trips/:slug` | edit title, city, dates, notes or visibility |
 | `DELETE /api/v1/trips/:slug` | delete the trip (204) |
 | `POST /api/v1/trips/:slug/places` | save a place `{ place_id, note? }` |

@@ -18,6 +18,29 @@ function create({ db, log = console } = {}) {
         db,
         service: 'tours',
         tables: TABLES,
+        /**
+         * A share row names its owner and its members by canonical subject, which a table map cannot cover: the
+         * trip's own rows go, and so must the share row and everyone it named, or a deleted account would linger in
+         * somebody else's trip's member list. Children first: share_members, transfers and requests point at shares.
+         */
+        extraErase: async (t, subjects) => {
+            for (const subject of subjects) {
+                const id = String(subject).replace(/^user:/, '');
+                await t.exec("DELETE FROM share_members WHERE service='tours' AND subject->>'id' = $1", [id]);
+                await t.exec("DELETE FROM share_transfers WHERE service='tours' AND (from_subject->>'id' = $1 OR to_subject->>'id' = $1)", [id]);
+                await t.exec("DELETE FROM share_access_requests WHERE service='tours' AND subject->>'id' = $1", [id]);
+            }
+            for (const subject of subjects) {
+                const id = String(subject).replace(/^user:/, '');
+                const owned = await t.many("SELECT kind, resource_id FROM shares WHERE service='tours' AND owner_subject->>'id' = $1", [id]);
+                for (const row of owned) {
+                    await t.exec("DELETE FROM share_members WHERE service='tours' AND kind=$1 AND resource_id=$2", [row.kind, row.resource_id]);
+                    await t.exec("DELETE FROM share_transfers WHERE service='tours' AND kind=$1 AND resource_id=$2", [row.kind, row.resource_id]);
+                    await t.exec("DELETE FROM share_access_requests WHERE service='tours' AND kind=$1 AND resource_id=$2", [row.kind, row.resource_id]);
+                    await t.exec("DELETE FROM shares WHERE service='tours' AND kind=$1 AND resource_id=$2", [row.kind, row.resource_id]);
+                }
+            }
+        },
         note: 'Your trips and everything saved on them are erased. Public cities, places and routes are open data and stay.',
         log,
     });

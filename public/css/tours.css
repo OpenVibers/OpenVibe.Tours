@@ -42,6 +42,10 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr-card, .tr-form.tr-card { border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 16px; background: var(--bg-secondary, #101828); padding: 18px; }
 .tr-form { display: grid; gap: 12px; margin: 0; }
 .tr-form-inline { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-top: 10px; }
+/* The person's default for new trips (visibility step 3): a select and its "apply to all" box on one line. */
+.tr-check { display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; color: var(--text-secondary, #96a7c2); }
+.tr-check input { width: auto; }
+.tr-visibility { font-weight: 700; color: var(--text-secondary, #96a7c2); }
 .tr-field { display: grid; gap: 5px; font-size: .9rem; min-width: 0; }
 .tr-field > span { color: var(--text-secondary, #96a7c2); font-size: .8rem; font-weight: 700; }
 .tr-field input, .tr-field select, .tr-field textarea { width: 100%; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.16)); background: var(--bg-primary, #0a0f1c); color: inherit; font: inherit; }

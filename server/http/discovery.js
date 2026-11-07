@@ -2,7 +2,7 @@
 
 /**
  * Crawl artifacts for openvibe.tours: robots.txt, sitemap.xml, llms.txt and llms-full.txt. Public cities, places and
- * routes are for search engines and language models; sign-in, the API, a trip (private or shared) and the internal
+ * routes are for search engines and language models; sign-in, the API, a trip (Always private in search, whatever its audience) and the internal
  * routes are not.
  */
 const fs = require('fs');
@@ -12,7 +12,7 @@ const cache = require('openvibe-shared/cache-policy');
 const { asyncRouter } = require('./router');
 
 const SITE_NAME = 'OpenVibe.Tours';
-const DESCRIPTION = 'OpenVibe.Tours is go anywhere: fly, stay, walk, watch. Cities, places and self-guided routes from OpenStreetMap, Wikivoyage and Wikidata; IRL tours live on OpenVibe.Live; stays from OpenVibe.Rent; flights through the official airline-neutral search; and trips a person can share read-only.';
+const DESCRIPTION = 'OpenVibe.Tours is go anywhere: fly, stay, walk, watch. Cities, places and self-guided routes from OpenStreetMap, Wikivoyage and Wikidata; IRL tours live on OpenVibe.Live; stays from OpenVibe.Rent; flights through the official airline-neutral search; and trips a person shares with the people going with them.';
 const DISALLOW = ['/auth/', '/api/', '/internal', '/metrics', '/trips'];
 
 const dayOf = (ts) => { const m = String(ts == null ? '' : ts).match(/^(\d{4}-\d{2}-\d{2})/); return m ? m[1] : null; };
