@@ -55,11 +55,12 @@ function createPageRoutes(ctx) {
             store.counts(), store.liveNow({ limit: 8 }), store.recentTours({ limit: 8 }), store.placeOfTheDay(new Date().toISOString().slice(0, 10)),
             store.listCities({ limit: 8 }), store.routes({ limit: 8 }), store.stays({ limit: 8 }), store.latestJobRuns(),
         ]);
+        const route = routes.length ? await store.routeById(routes[0].id) : null;
         return page(req, res, {
             index: true, cache: PUBLIC_CACHE, title: null,
             description: 'Go anywhere: fly, stay, walk, watch. Cities and places from OpenStreetMap, Wikivoyage and Wikidata, IRL tours on OpenVibe.Live, stays from OpenVibe.Rent, self-guided routes, and trips you can share read-only.',
             jsonLd: homeJsonLd(config),
-            body: raw(views.home({ counts, live, recent, placeOfDay, cities, routes, stays, jobs })),
+            body: raw(views.home({ counts, live, recent, placeOfDay, cities, routes, stays, jobs, route })),
         });
     });
 
