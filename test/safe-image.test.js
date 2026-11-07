@@ -12,6 +12,19 @@ const hosts = /const IMAGE_HOSTS = [^\n]+\n/.exec(src);
 const img = /const safeImage = \(v\) => \{[\s\S]*?\n\};\n/.exec(src);
 assert.ok(http && hosts && img, 'views has safeHttp, IMAGE_HOSTS and safeImage');
 const safeImage = new Function(`${http[0]}${hosts[0]}${img[0]}; return safeImage;`)();
+const iw = /function imageWidth\(u, w\) \{[\s\S]*?\n\}\n/.exec(src);
+assert.ok(iw, 'views has imageWidth');
+const imageWidth = new Function(`${iw[0]}; return imageWidth;`)();
+
+// Cards ask for the width they draw on both URL shapes Wikimedia's imageinfo returns, and on a
+// stored original; no other host is rewritten.
+const thumbUrl = 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.jpg/1280px-Foo.jpg?utm_source=commons.wikimedia.org';
+assert.strictEqual(imageWidth(thumbUrl, 330), 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.jpg/330px-Foo.jpg?utm_source=commons.wikimedia.org', 'a thumb URL changes its width');
+assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/5/51/Foo.png?utm_source=x', 640), 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Foo.png/640px-Foo.png?utm_source=x', 'a stored original becomes a thumb');
+assert.strictEqual(imageWidth('https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg?width=1000', 330), 'https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg?width=330', 'Special:FilePath takes a width');
+assert.strictEqual(imageWidth('https://openvibe.media/t/x.jpg', 330), null, 'a non-Wikimedia picture is not rewritten');
+assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/a/ab/Foo.jpg', 330), 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.jpg/330px-Foo.jpg', 'a two-letter hash prefix');
+assert.strictEqual(imageWidth(null, 330), null);
 
 assert.strictEqual(safeImage('https://photos.app.goo.gl/A7PbTNW1RbBbZUrTA'), null, 'a share link is not a picture');
 assert.ok(safeImage('https://upload.wikimedia.org/wikipedia/commons/a/ab/Hachiko.jpg'), 'Commons uploads');

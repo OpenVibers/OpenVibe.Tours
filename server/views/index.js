@@ -37,8 +37,8 @@ const safeImage = (v) => {
     } catch { return null; }
 };
 // Wikimedia answers a width through the Special:FilePath redirect (OSM/place pictures) or the
-// "<n>px-" segment of a thumb URL (Commons' iiurlwidth, city pictures). Any other picture is
-// left as it is.
+// "<n>px-" segment of a thumb URL (Commons' iiurlwidth, city pictures). A stored original can be
+// turned into a thumb path. Any other picture is left as it is.
 function imageWidth(u, w) {
     if (!u) return null;
     try {
@@ -47,8 +47,17 @@ function imageWidth(u, w) {
             url.searchParams.set('width', String(w));
             return url.toString();
         }
-        if (/(^|\.)upload\.wikimedia\.org$/i.test(url.hostname) && /\/thumb\//.test(url.pathname)) {
-            return u.replace(/(\/)(\d+)px-/, `/$1${w}px-`);
+        if (/(^|\.)wikimedia\.org$/i.test(url.hostname)) {
+            const thumb = url.pathname.match(/^(.*\/thumb\/.*\/)(\d+)px-([^/]+)$/);
+            if (thumb) {
+                url.pathname = `${thumb[1]}${w}px-${thumb[3]}`;
+                return url.toString();
+            }
+            const original = url.pathname.match(/^\/(wikipedia\/[^/]+)\/([0-9a-f])\/([0-9a-f]{2})\/([^/]+)$/i);
+            if (original) {
+                url.pathname = `/${original[1]}/thumb/${original[2]}/${original[3]}/${original[4]}/${w}px-${original[4]}`;
+                return url.toString();
+            }
         }
     } catch { /* not a URL: use it unchanged */ }
     return null;
