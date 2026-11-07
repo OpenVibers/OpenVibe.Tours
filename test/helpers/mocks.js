@@ -118,9 +118,20 @@ async function startNetwork() {
             return json(200, { items: [], next_cursor: null });
         }
 
-        if (url.pathname === '/internal/identity/resolve-batch' && req.method === 'POST') return json(200, { results: {} });
+        if (url.pathname === '/internal/identity/resolve-batch' && req.method === 'POST') {
+            const ids0 = JSON.parse(raw.toString('utf8') || '{}').subject_ids || [];
+            const results = {};
+            for (const subjectId of ids0) {
+                const u = [...st.users.values()].find((x) => x.subject === subjectId);
+                if (u) results[subjectId] = { subject: { type: 'user', id: u.subject }, username: u.username, display_name: u.display_name };
+            }
+            return json(200, { results });
+        }
         if (url.pathname === '/internal/notifications/push' && req.method === 'POST') return json(200, { ok: true });
         if (url.pathname === '/internal/identity/resolve' && req.method === 'GET') {
+            const name = String(url.searchParams.get('username') || '').toLowerCase();
+            const u = st.byUsername.get(name);
+            if (u) return json(200, { subject: { type: 'user', id: u.subject }, username: u.username, display_name: u.display_name });
             return json(200, { subject_id: url.searchParams.get('subject_id'), network_user_id: 42 });
         }
         if (url.pathname === '/internal/coins/credit' && req.method === 'POST') {

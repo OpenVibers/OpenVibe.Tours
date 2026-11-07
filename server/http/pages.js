@@ -16,6 +16,9 @@ const views = require('../views');
 const { createFlights } = require('../flights');
 
 const PUBLIC_CACHE = 'public, max-age=60';
+const ovServe = require('openvibe-shared/serve');
+/** The one Share sheet, loaded only on a page that carries a Share button or a gate. */
+const SHARE_HEAD = `<link rel="stylesheet" href="${ovServe.url('ov-share.css')}"><script src="${ovServe.url('ov-share.js')}" defer></script>`;
 
 function createPageRoutes(ctx) {
     const { config, store } = ctx;
@@ -210,8 +213,19 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
     // ── Trips ────────────────────────────────────────────────
     r.get('/trips', async (req, res) => {
         if (!signedIn(req)) return page(req, res, { index: false, cache: null, title: 'Trips', body: raw(views.signIn({ title: 'Your trips', text: 'A trip belongs to a signed-in person. Sign in to see yours or plan one.', next: '/trips' })) }, 401);
-        const trips = await store.tripsForSubject(req.viewer.subject);
-        return page(req, res, { index: false, cache: null, title: 'Your trips', body: raw(views.tripsPage({ trips })) });
+        const [trips, defaultAudience] = await Promise.all([
+            store.tripsForSubject(req.viewer.subject),
+            ctx.sharing ? ctx.sharing.defaultOf(req.viewer.subject).catch(() => 'private') : 'private',
+        ]);
+        return page(req, res, { index: false, cache: null, title: 'Your trips', body: raw(views.tripsPage({ trips, defaultAudience })) });
+    });
+
+    r.post('/trips/defaults', guard, async (req, res) => {
+        if (!ctx.sharing) return res.redirect(303, '/trips');
+        const audience = ['private', 'people', 'link', 'public'].includes(req.body.audience) ? req.body.audience : 'private';
+        await ctx.sharing.setDefault(req.viewer.subject, audience, { applyAll: String(req.body.apply_all || '') === '1' })
+            .catch((err) => ctx.log.warn('[Tours] the trip default was not saved:', err.message));
+        return res.redirect(303, '/trips');
     });
 
     r.get('/trips/new', async (req, res) => {
@@ -234,24 +248,37 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
 
     r.get('/trips/:slug', async (req, res) => {
         const subject = signedIn(req) ? req.viewer.subject : null;
-        const out = await store.tripBySlug(String(req.params.slug || ''), { subject });
-        if (!out) return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, 404);
-        const cities = out.mine ? await store.listCities({ limit: 100 }) : [];
+        const out = await store.tripBySlug(String(req.params.slug || ''), { subject, viewer: req.viewer });
+        if (!out) {
+            // A trip shared with specific people answers the gate: "Ask for access" when signed in, "Sign in"
+            // otherwise, and never its title, places or notes.
+            const audience = ctx.sharing ? await ctx.sharing.audienceOf(String(req.params.slug || '')).catch(() => null) : null;
+            if (audience === 'people') {
+                return page(req, res, {
+                    index: false, cache: null, title: 'A trip shared with specific people', head: SHARE_HEAD,
+                    body: raw(views.tripGate({ slug: String(req.params.slug || ''), signedInAs: signedIn(req) ? (req.viewer.username || '') : '',
+                        signInUrl: `/auth/login?next=${encodeURIComponent(req.originalUrl)}` })),
+                }, 404);
+            }
+            return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, 404);
+        }
+        const cities = out.canEdit ? await store.listCities({ limit: 100 }) : [];
+        const reader = signedIn(req);
         return page(req, res, {
-            index: false, cache: out.mine ? null : 'public, max-age=60', title: out.trip.title,
-            jsonLd: [tripJsonLd(out.trip, out.route)], body: raw(views.tripPage({ ...out, cities })),
+            // Only a signed-out reader's copy of a link/public trip may sit in a shared cache. A signed-in reader's
+            // copy carries the Share sheet's kind/id (and, for its owner, the people it is shared with), so it is
+            // private, no-store — send() also makes any signed-in page private.
+            index: false,
+            cache: !reader && (out.audience === 'link' || out.audience === 'public') ? 'public, max-age=60' : null,
+            head: SHARE_HEAD,
+            title: out.trip.title, jsonLd: [tripJsonLd(out.trip, out.route)],
+            body: raw(views.tripPage({ ...out, cities, canShare: reader })),
         });
-    });
-
-    r.post('/trips/:slug/share', guard, async (req, res) => {
-        const out = await store.updateTrip({ subject: req.viewer.subject, slug: String(req.params.slug || ''), input: { visibility: req.body.shared === '1' ? 'shared' : 'private' } });
-        if (!out.ok) return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, out.status || 404);
-        return res.redirect(303, `/trips/${out.trip.slug}`);
     });
 
     r.post('/trips/:slug/edit', guard, async (req, res) => {
         const out = await store.updateTrip({
-            subject: req.viewer.subject, slug: String(req.params.slug || ''),
+            subject: req.viewer.subject, viewer: req.viewer, slug: String(req.params.slug || ''),
             input: { title: req.body.title, city_slug: req.body.city, starts_on: req.body.starts_on, ends_on: req.body.ends_on, notes: req.body.notes },
         });
         if (!out.ok) return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, out.status || 404);
@@ -260,37 +287,37 @@ ${routes.length ? `<ol class="tr-route-list tr-route-list-big">${routes.map((rt)
 
     r.post('/trips/:slug/places', guard, async (req, res) => {
         const slug = /^trip-[a-z0-9]{16,32}$/.test(String(req.body.trip || '')) ? String(req.body.trip) : String(req.params.slug || '');
-        const out = await store.addTripPlace({ subject: req.viewer.subject, slug, placeId: req.body.place_id, note: req.body.note });
+        const out = await store.addTripPlace({ subject: req.viewer.subject, viewer: req.viewer, slug, placeId: req.body.place_id, note: req.body.note });
         if (!out.ok) return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, out.status || 404);
         return res.redirect(303, `/trips/${slug}`);
     });
 
     r.post('/trips/:slug/places/:placeId/remove', guard, async (req, res) => {
-        await store.removeTripPlace({ subject: req.viewer.subject, slug: String(req.params.slug || ''), placeId: String(req.params.placeId || '') });
+        await store.removeTripPlace({ subject: req.viewer.subject, viewer: req.viewer, slug: String(req.params.slug || ''), placeId: String(req.params.placeId || '') });
         return res.redirect(303, `/trips/${String(req.params.slug || '')}`);
     });
 
     r.post('/trips/:slug/route', guard, async (req, res) => {
         const slug = /^trip-[a-z0-9]{16,32}$/.test(String(req.body.trip || '')) ? String(req.body.trip) : String(req.params.slug || '');
-        const out = await store.setTripRoute({ subject: req.viewer.subject, slug, routeId: req.body.route_id || null });
+        const out = await store.setTripRoute({ subject: req.viewer.subject, viewer: req.viewer, slug, routeId: req.body.route_id || null });
         if (!out.ok) return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, out.status || 404);
         return res.redirect(303, `/trips/${slug}`);
     });
 
     r.post('/trips/:slug/stays', guard, async (req, res) => {
         const slug = /^trip-[a-z0-9]{16,32}$/.test(String(req.body.trip || '')) ? String(req.body.trip) : String(req.params.slug || '');
-        const out = await store.addTripStay({ subject: req.viewer.subject, slug, stayId: req.body.stay_id });
+        const out = await store.addTripStay({ subject: req.viewer.subject, viewer: req.viewer, slug, stayId: req.body.stay_id });
         if (!out.ok) return page(req, res, { index: false, cache: null, title: 'Not found', body: raw(views.notFound()) }, out.status || 404);
         return res.redirect(303, `/trips/${slug}`);
     });
 
     r.post('/trips/:slug/stays/:stayId/remove', guard, async (req, res) => {
-        await store.removeTripStay({ subject: req.viewer.subject, slug: String(req.params.slug || ''), stayId: String(req.params.stayId || '') });
+        await store.removeTripStay({ subject: req.viewer.subject, viewer: req.viewer, slug: String(req.params.slug || ''), stayId: String(req.params.stayId || '') });
         return res.redirect(303, `/trips/${String(req.params.slug || '')}`);
     });
 
     r.post('/trips/:slug/delete', guard, async (req, res) => {
-        await store.deleteTrip({ subject: req.viewer.subject, slug: String(req.params.slug || '') });
+        await store.deleteTrip({ subject: req.viewer.subject, viewer: req.viewer, slug: String(req.params.slug || '') });
         return res.redirect(303, '/trips');
     });
 

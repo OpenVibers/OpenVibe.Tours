@@ -76,7 +76,7 @@ const trip = {
     properties: {
         id: { type: 'string' }, slug: { type: 'string' }, title: { type: 'string' }, city_id: { type: ['string', 'null'] },
         city_slug: { type: ['string', 'null'] }, city_name: { type: ['string', 'null'] }, starts_on: { type: 'string', format: 'date' },
-        ends_on: { type: 'string', format: 'date' }, notes: { type: ['string', 'null'] }, visibility: { type: 'string', enum: ['private', 'shared'] },
+        ends_on: { type: 'string', format: 'date' }, notes: { type: ['string', 'null'] }, visibility: { type: 'string', enum: ['private', 'shared'], deprecated: true, description: 'The old two words; the Share sheet names the audience (Everyone, Anyone with the link, Specific people, Only me).' },
         revision: { type: 'integer' }, created_at: { type: 'string', format: 'date-time' }, updated_at: { type: 'string', format: 'date-time' },
     },
 };
@@ -133,7 +133,7 @@ const document = {
         },
         '/api/v1/trips/{slug}': {
             get: { summary: 'Your trip, or a shared one read-only', tags: ['Trips'], parameters: [pathParam('slug', 'trip-0123456789abcdef01234567')], responses: { ...json({ type: 'object', properties: { trip: { $ref: '#/components/schemas/Trip' }, mine: { type: 'boolean' }, places: { type: 'array', items: { $ref: '#/components/schemas/Place' } }, route: { oneOf: [{ $ref: '#/components/schemas/Route' }, { type: 'null' }] }, stays: { type: 'array', items: { $ref: '#/components/schemas/Stay' } } } }), '404': { description: 'No such trip, or it is private' } } },
-            patch: { summary: 'Edit your trip', tags: ['Trips'], parameters: [pathParam('slug', 'trip-0123456789abcdef01234567')], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, city_slug: { type: 'string' }, starts_on: { type: 'string', format: 'date' }, ends_on: { type: 'string', format: 'date' }, notes: { type: 'string' }, visibility: { type: 'string', enum: ['private', 'shared'] } } } } } }, responses: { ...json({ $ref: '#/components/schemas/Trip' }), ...unauth } },
+            patch: { summary: 'Edit your trip', tags: ['Trips'], parameters: [pathParam('slug', 'trip-0123456789abcdef01234567')], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { title: { type: 'string' }, city_slug: { type: 'string' }, starts_on: { type: 'string', format: 'date' }, ends_on: { type: 'string', format: 'date' }, notes: { type: 'string' }, visibility: { type: 'string', enum: ['private', 'shared'], deprecated: true, description: 'Only its owner changes who can open a trip; the Share sheet is that way.' } } } } } }, responses: { ...json({ $ref: '#/components/schemas/Trip' }), ...unauth } },
             delete: { summary: 'Delete your trip', tags: ['Trips'], parameters: [pathParam('slug', 'trip-0123456789abcdef01234567')], responses: { '204': { description: 'Deleted' }, ...unauth } },
         },
         '/api/v1/trips/{slug}/places': {

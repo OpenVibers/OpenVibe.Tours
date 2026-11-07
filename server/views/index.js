@@ -148,7 +148,7 @@ const HOME_FAQ = [
     ['Are the routes real guided tours?', 'No. They are self-guided walks generated from Wikivoyage\'s See lists and marked as generated. Check opening hours and access before you go; the note at each stop is the Wikivoyage text, cited.'],
     ['Do you sell flights or stays?', 'No. There is no flight API key in v1: the flight form opens the official airline-neutral search with the city pair filled in, with no affiliate parameter. Stays link to the listing on OpenVibe.Rent; Tours never takes a payment.'],
     ['Is there audio on the stops?', 'Not yet. OpenVibe.AI has no speech-synthesis route today, so every stop says audio is off instead of shipping a broken player. The audio fields are in the schema for when an API exists.'],
-    ['Who can see my trip?', 'Only you, until you switch it to shared. A shared trip is readable by anyone with its link and editable only by you. Delete it at any time; account deletion erases your trips.'],
+    ['Who can see my trip?', 'Only you, until you share it. Everyone and Anyone with the link are readable by whoever has the address; Specific people is only the accounts you add, each Can view or Can edit; Only me is you. Your Share button changes one trip, and /trips sets what a new trip starts as. Delete it at any time; account deletion erases your trips.'],
     ['Why is a city missing?', 'The v1 catalogue is the top 100 cities by population; every city is fetched from Wikidata and Wikivoyage. A failed source run leaves the previous data and says so in the job receipt rather than inventing a place.'],
 ];
 
@@ -195,7 +195,7 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
             },
             {
                 title: 'Build a trip and share it read-only',
-                text: 'Sign in with OpenVibe, pick a city and dates, save places, add a route and a stay, then share the link. Only you can edit it; anyone with the link can read it. Group voting is not in v1.',
+                text: 'Sign in with OpenVibe, pick a city and dates, save places, add a route and a stay, then share it with the people going with you. Can edit means they plan it with you; Group voting is not in v1.',
                 html: `<div class="tr-demo-trip"><span class="tr-trip-day">Fri</span><b>Land · check in</b><span class="tr-trip-day">Sat</span><b>Walk the See list</b><span class="tr-trip-day">Sun</span><b>Market, then home</b><small>Private by default · shared on purpose</small></div>`,
                 action: { href: '/trips/new', label: 'Plan a trip' },
             },
@@ -208,7 +208,7 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
                 { title: 'Live tours', text: 'IRL streams now and recent VODs from OpenVibe.Live.', href: '/live', icon: 'live' },
                 { title: 'Stays', text: 'Rentals from OpenVibe.Rent; no payment is handled here.', href: '/stays', icon: 'home' },
                 { title: 'Flights', text: 'No key yet: a form opens the official airline-neutral search.', href: '/flights', icon: 'plane' },
-                { title: 'Trips', text: 'A city, dates, saved places, a route and stays — shareable read-only.', href: '/trips', icon: 'calendar' },
+                { title: 'Trips', text: 'A city, dates, saved places, a route and stays — shared with the people going with you.', href: '/trips', icon: 'calendar' },
             ],
         },
         dev: {
@@ -369,7 +369,7 @@ function signIn({ title = 'Sign in', text = 'This page is for a signed-in person
 function tripNew({ cities = [], values = {}, error = null } = {}) {
     const v = { title: '', city: '', starts_on: '', ends_on: '', notes: '', ...values };
     return `<div class="tr-wrap tr-narrow" id="tr-trip-new">
-<header class="tr-page-h"><p class="tr-kicker">Trips</p><h1>Plan a trip</h1><p class="tr-lede">A city, dates and a name. After this you can save places, add a self-guided route and pick a stay; share it read-only when it is ready.</p></header>
+<header class="tr-page-h"><p class="tr-kicker">Trips</p><h1>Plan a trip</h1><p class="tr-lede">A city, dates and a name. After this you can save places, add a self-guided route and pick a stay; share it with the people going with you when it is ready.</p></header>
 ${error ? note(esc(error), 'error') : ''}
 <form class="tr-form tr-card" method="post" action="/trips">
 <label class="tr-field"><span>Trip name</span><input name="title" value="${esc(v.title)}" maxlength="120" required placeholder="Lisbon in November"></label>
@@ -381,21 +381,34 @@ ${error ? note(esc(error), 'error') : ''}
 </form></div>`;
 }
 
-function tripsPage({ trips = [] } = {}) {
+function tripsPage({ trips = [], defaultAudience = 'private' } = {}) {
+    const audienceText = { private: 'Only me', people: 'Specific people', link: 'Anyone with the link', public: 'Everyone' };
+    const audienceWord = (v) => (v === 'shared' ? 'Anyone with the link' : 'Only me');
+    const options = ['private', 'people', 'link', 'public']
+        .map((a) => `<option value="${a}"${a === defaultAudience ? ' selected' : ''}>${audienceText[a]}</option>`).join('');
     return `<div class="tr-wrap" id="tr-trips-page">
-<header class="tr-page-h"><p class="tr-kicker">Trips</p><h1>Your trips</h1><p class="tr-lede">Private by default. A shared trip has a read-only link; only you can edit it. The API and forms never expose another person's trip.</p><p><a class="tr-btn" href="/trips/new">Plan a new trip</a></p></header>
-${trips.length ? `<ol class="tr-trip-list">${trips.map((t) => `<li><a href="/trips/${esc(t.slug)}"><strong>${esc(t.title)}</strong><span class="tr-muted">${esc(t.city_name || t.city_slug || '')} · ${day(t.starts_on)} to ${day(t.ends_on)} · ${esc(t.visibility)}</span></a></li>`).join('')}</ol>` : empty('No trip yet. Start with a city and two dates.', '/trips/new', 'Plan a trip')}
+<header class="tr-page-h"><p class="tr-kicker">Trips</p><h1>Your trips</h1><p class="tr-lede">Only me by default. Share a trip with the people going with you, with Can edit, and you plan it together. The API and forms never expose another person's trip.</p><p><a class="tr-btn" href="/trips/new">Plan a new trip</a></p></header>
+<section class="tr-sec tr-card"><h2>New trips</h2>
+<form class="tr-form tr-form-inline" method="post" action="/trips/defaults">
+<label class="tr-field"><span>Who can open a new trip</span><select name="audience">${options}</select></label>
+<label class="tr-check"><input type="checkbox" name="apply_all" value="1"> Apply to all my existing trips</label>
+<button class="tr-btn" type="submit">Save</button>
+</form><p class="tr-fine">A trip's Share button changes just that trip.</p></section>
+${trips.length ? `<ol class="tr-trip-list">${trips.map((t) => `<li><a href="/trips/${esc(t.slug)}"><strong>${esc(t.title)}</strong><span class="tr-muted">${esc(t.city_name || t.city_slug || '')} · ${day(t.starts_on)} to ${day(t.ends_on)} · ${esc(audienceWord(t.visibility))}</span></a></li>`).join('')}</ol>` : empty('No trip yet. Start with a city and two dates.', '/trips/new', 'Plan a trip')}
 </div>`;
 }
 
-function tripPage({ trip, mine = false, cities = [], places = [], route = null, stays = [] } = {}) {
+function tripPage({ trip, mine = false, canEdit = false, canShare = false, audience = null, cities = [], places = [], route = null, stays = [] } = {}) {
     const shareUrl = `/trips/${trip.slug}`;
+    const audienceText = { public: 'Everyone', link: 'Anyone with the link', people: 'Specific people', private: 'Only me' };
+    const who = audienceText[audience] || (trip.visibility === 'shared' ? 'Anyone with the link' : 'Only me');
     return `<div class="tr-wrap" id="tr-trip-page">
 <nav class="crumbs" aria-label="Breadcrumbs"><a href="/trips">Trips</a> / ${esc(trip.title)}</nav>
 <header class="tr-page-h"><p class="tr-kicker">${esc(trip.city_name || '')} · ${day(trip.starts_on)} to ${day(trip.ends_on)}</p><h1>${esc(trip.title)}</h1>
 ${trip.notes ? `<p class="tr-lede">${esc(trip.notes)}</p>` : ''}
-<p class="tr-fine">${esc(trip.visibility === 'shared' ? 'Shared read-only' : 'Private')}${mine ? '' : ' · you are reading a shared trip'} · last changed ${when(trip.updated_at)}</p></header>
-${mine ? `<section class="tr-sec tr-card"><h2>Share and edit</h2><p class="tr-muted">${trip.visibility === 'shared' ? 'Anyone with this link can read it.' : 'Only you can read it.'}</p><p><code>${esc(shareUrl)}</code></p><form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/share"><input type="hidden" name="shared" value="${trip.visibility === 'shared' ? '0' : '1'}"><button class="tr-btn tr-btn-quiet" type="submit">${trip.visibility === 'shared' ? 'Make it private' : 'Share read-only'}</button></form>
+<p class="tr-fine"><span class="tr-visibility">${esc(who)}</span>${mine ? '' : ' · you are reading a shared trip'} · last changed ${when(trip.updated_at)}</p>
+${canShare ? `<p><button type="button" class="tr-btn tr-btn-quiet" data-ov-share-sheet data-kind="trip" data-id="${esc(trip.slug)}" data-title="${esc(trip.title)}">Share</button></p>` : ''}</header>
+${canEdit ? `<section class="tr-sec tr-card"><h2>Share and edit</h2><p class="tr-muted">${who === 'Only me' ? 'Only you can read it.' : who === 'Anyone with the link' ? 'Anyone with this link can read it.' : who === 'Specific people' ? 'Only you and the people on the list can open it.' : 'Everyone can read it.'}</p><p><code>${esc(shareUrl)}</code></p>
 <details class="tr-edit"><summary>Edit the name, city and dates</summary><form class="tr-form" method="post" action="/trips/${esc(trip.slug)}/edit">
 <label class="tr-field"><span>Trip name</span><input name="title" value="${esc(trip.title)}" maxlength="120" required></label>
 <label class="tr-field"><span>City</span><select name="city">${cities.map((c) => `<option value="${esc(c.slug)}"${c.id === trip.city_id ? ' selected' : ''}>${esc(c.name)}, ${esc(c.country)}</option>`).join('')}</select></label>
@@ -403,18 +416,31 @@ ${mine ? `<section class="tr-sec tr-card"><h2>Share and edit</h2><p class="tr-mu
 <label class="tr-field"><span>Ends</span><input type="date" name="ends_on" value="${esc(day(trip.ends_on))}" required></label>
 <label class="tr-field"><span>Notes</span><textarea name="notes" rows="3" maxlength="2000">${esc(trip.notes || '')}</textarea></label>
 <button class="tr-btn" type="submit">Save the trip</button></form></details></section>` : ''}
-<section class="tr-sec"><div class="tr-sec-head"><h2>Saved places</h2>${mine ? '' : `<span class="tr-muted">${places.length} places</span>`}</div>
-${places.length ? `<ol class="tr-trip-places">${places.map((p) => `<li><span class="tr-stop-num" aria-hidden="true">${Number(p.position)}</span><div><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong></a><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(p.city_name)}${p.trip_note ? ` · ${esc(p.trip_note)}` : ''}</span>${mine ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/places/${esc(p.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</div></li>`).join('')}</ol>` : empty('No place saved yet. Open a city and a place, then save it here.', trip.city_slug ? `/city/${trip.city_slug}` : '/cities', 'Find places')}
-${mine ? `<form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/places"><label class="tr-field"><span>Place id</span><input name="place_id" required placeholder="plc_…" pattern="plc_[0-9A-HJKMNP-TV-Z]{26}"></label><label class="tr-field"><span>Note</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form><p class="tr-fine">The place id is on the place page. In the API: POST /api/v1/trips/${esc(trip.slug)}/places.</p>` : ''}
+<section class="tr-sec"><div class="tr-sec-head"><h2>Saved places</h2>${canEdit ? '' : `<span class="tr-muted">${places.length} places</span>`}</div>
+${places.length ? `<ol class="tr-trip-places">${places.map((p) => `<li><span class="tr-stop-num" aria-hidden="true">${Number(p.position)}</span><div><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong></a><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(p.city_name)}${p.trip_note ? ` · ${esc(p.trip_note)}` : ''}</span>${canEdit ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/places/${esc(p.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</div></li>`).join('')}</ol>` : empty('No place saved yet. Open a city and a place, then save it here.', trip.city_slug ? `/city/${trip.city_slug}` : '/cities', 'Find places')}
+${canEdit ? `<form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/places"><label class="tr-field"><span>Place id</span><input name="place_id" required placeholder="plc_…" pattern="plc_[0-9A-HJKMNP-TV-Z]{26}"></label><label class="tr-field"><span>Note</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form><p class="tr-fine">The place id is on the place page. In the API: POST /api/v1/trips/${esc(trip.slug)}/places.</p>` : ''}
 </section>
-<section class="tr-sec"><div class="tr-sec-head"><h2>Route</h2>${mine ? `<a class="tr-more" href="${trip.city_slug ? `/city/${trip.city_slug}` : '/routes'}">Find a route</a>` : ''}</div>
-${route ? `<p><a href="/routes/${esc(route.id)}"><strong>${esc(route.title)}</strong></a> <span class="tr-muted">${Number(route.stop_count)} stops · ${km(route.distance_m)}</span></p>${mine ? `<form method="post" action="/trips/${esc(trip.slug)}/route"><input type="hidden" name="route_id" value=""><button class="tr-btn tr-btn-quiet" type="submit">Remove route</button></form>` : ''}` : `<p class="tr-muted">No route added${mine ? '. Open a route and press “Add to trip”.' : '.'}</p>`}
+<section class="tr-sec"><div class="tr-sec-head"><h2>Route</h2>${canEdit ? `<a class="tr-more" href="${trip.city_slug ? `/city/${trip.city_slug}` : '/routes'}">Find a route</a>` : ''}</div>
+${route ? `<p><a href="/routes/${esc(route.id)}"><strong>${esc(route.title)}</strong></a> <span class="tr-muted">${Number(route.stop_count)} stops · ${km(route.distance_m)}</span></p>${canEdit ? `<form method="post" action="/trips/${esc(trip.slug)}/route"><input type="hidden" name="route_id" value=""><button class="tr-btn tr-btn-quiet" type="submit">Remove route</button></form>` : ''}` : `<p class="tr-muted">No route added${canEdit ? '. Open a route and press “Add to trip”.' : '.'}</p>`}
 </section>
-<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2>${mine ? `<a class="tr-more" href="/stays">Find a stay</a>` : ''}</div>
-${stays.length ? `<ol class="tr-stay-list">${stays.map((s0) => `<li><a href="${esc(s0.url)}" rel="noopener"><strong>${esc(s0.title)}</strong><span class="tr-muted">${money(s0.price, s0.currency)} / ${esc(s0.period)}</span></a>${mine ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/stays/${esc(s0.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</li>`).join('')}</ol>` : `<p class="tr-muted">No stay added${mine ? '. Open a stay and add it here.' : '.'}</p>`}
-${mine ? `<form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/stays"><label class="tr-field"><span>Stay id</span><input name="stay_id" required placeholder="sty_…" pattern="sty_[0-9A-HJKMNP-TV-Z]{26}"></label><button class="tr-btn" type="submit">Add stay</button></form>` : ''}
+<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2>${canEdit ? `<a class="tr-more" href="/stays">Find a stay</a>` : ''}</div>
+${stays.length ? `<ol class="tr-stay-list">${stays.map((s0) => `<li><a href="${esc(s0.url)}" rel="noopener"><strong>${esc(s0.title)}</strong><span class="tr-muted">${money(s0.price, s0.currency)} / ${esc(s0.period)}</span></a>${canEdit ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/stays/${esc(s0.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</li>`).join('')}</ol>` : `<p class="tr-muted">No stay added${canEdit ? '. Open a stay and add it here.' : '.'}</p>`}
+${canEdit ? `<form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/stays"><label class="tr-field"><span>Stay id</span><input name="stay_id" required placeholder="sty_…" pattern="sty_[0-9A-HJKMNP-TV-Z]{26}"></label><button class="tr-btn" type="submit">Add stay</button></form>` : ''}
 </section>
 ${mine ? `<section class="tr-sec tr-card"><h2>Delete this trip</h2><form method="post" action="/trips/${esc(trip.slug)}/delete"><button class="tr-btn tr-btn-quiet" type="submit">Delete the trip</button></form><p class="tr-fine">This erases the trip and its saved places, route and stays. Places and routes themselves are public data and stay.</p></section>` : ''}
+</div>`;
+}
+
+/**
+ * The page a person not on a Specific-people trip's list sees: the audience, never the title, the places, the notes
+ * or the route. openvibe-shared 4.123.0 draws the card from this markup (no inline script, so a strict CSP needs
+ * nothing and every value is escaped like any other attribute).
+ */
+function tripGate({ slug, signedInAs = '', signInUrl = '/auth/login' } = {}) {
+    return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-trip-gate">
+<header class="tr-page-h"><p class="tr-kicker">Trips</p><h1>A trip shared with specific people</h1>
+<p class="tr-lede">Sign in with the OpenVibe account it was shared with, or ask its owner for access.</p></header>
+<div id="trip-share-gate" data-ov-share-gate data-kind="trip" data-id="${esc(slug)}" data-signed-in-as="${esc(signedInAs)}" data-sign-in-url="${esc(signInUrl)}">This is shared with specific people. Sign in with the OpenVibe account it was shared with, or ask its owner for access.</div>
 </div>`;
 }
 
@@ -427,8 +453,8 @@ function developersPage({ jobs = [] } = {}) {
         ['GET /api/v1/live', 'IRL tours now and recent IRL VODs', ''],
         ['GET /api/v1/trips', 'the signed-in person\'s trips', ''],
         ['POST /api/v1/trips', 'create a trip { title, city_slug, starts_on, ends_on, notes? }', ''],
-        ['GET /api/v1/trips/:slug', 'your trip, or a shared one read-only', ''],
-        ['PATCH /api/v1/trips/:slug', 'edit title, city, dates, notes or visibility', ''],
+        ['GET /api/v1/trips/:slug', 'your trip, or one shared with you', ''],
+        ['PATCH /api/v1/trips/:slug', 'edit title, city, dates or notes (owner, or Specific people with Can edit); the audience is the Share sheet\'s', ''],
         ['DELETE /api/v1/trips/:slug', 'delete your trip', ''],
         ['POST /api/v1/trips/:slug/places', 'save a place { place_id, note? }', ''],
         ['POST /api/v1/trips/:slug/route', 'set the trip\'s route { route_id }', ''],
@@ -449,4 +475,4 @@ function notFound() {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-not-found"><p class="tr-kicker">404</p><h1>Not here</h1><p class="tr-lede">That city, place, route or trip does not exist, or it is a private trip.</p><p><a class="tr-btn" href="/">Go home</a> <a class="tr-btn tr-btn-quiet" href="/cities">Browse cities</a></p></div>`;
 }
 
-module.exports = { placeName, localName, kindUnlessNamed, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
+module.exports = { placeName, localName, kindUnlessNamed, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, tripGate, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };

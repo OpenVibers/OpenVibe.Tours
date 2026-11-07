@@ -117,9 +117,28 @@ function wireTrip(row) {
     };
 }
 
-function createStore(s, { config = {} } = {}) {
+function createStore(s, { config = {}, sharing = null } = {}) {
     const db = s.db;
     const q = (t) => t || db;
+
+    /** The viewer as openvibe-sdk/share wants it. Tours' pages and API both name the person by subject. */
+    const asShareViewer = (viewer) => (viewer && viewer.subject ? { subject: viewer.subject } : null);
+    /**
+     * A trip's share row decides who may read it. A trip without one predates the backfill (a fixture, or a row made
+     * by a migration): its old column decides, and it fails closed unless it was shared by link.
+     */
+    async function shareAccess(viewer, row) {
+        if (!sharing) return { registered: false, view: row.visibility === 'shared', edit: false, audience: null };
+        let audience = null;
+        try { audience = await sharing.audienceOf(row.slug); } catch { audience = null; }
+        if (!audience) return { registered: false, view: row.visibility === 'shared', edit: false, audience: null };
+        const v = asShareViewer(viewer);
+        const [view, edit] = await Promise.all([
+            sharing.canView(v, row.slug).catch(() => false),
+            sharing.canEdit(v, row.slug).catch(() => false),
+        ]);
+        return { registered: true, view, edit, audience };
+    }
 
     // ── Cities ──────────────────────────────────────────────
     async function listCities({ limit = 100, offset = 0, q: query = null } = {}) {
@@ -466,6 +485,16 @@ function createStore(s, { config = {} } = {}) {
         const row = await db.maybe(`INSERT INTO tours_trips (id, slug, owner_subject, title, city_id, starts_on, ends_on, notes, visibility)
             VALUES ($1,$2,$3,$4,$5,$6::date,$7::date,$8,$9) RETURNING *`,
         [id, slug, subject, v.title, city.id, v.starts_on, v.ends_on, v.notes || null, v.visibility]);
+        // Sharing (design 2026-11-06): the trip is its owner's, at the person's default until the Share sheet changes
+        // it. A trip that does not register is still the owner's: every read falls back to its old column.
+        if (sharing) {
+            try {
+                const audience = await sharing.defaultOf(subject).catch(() => 'private');
+                await sharing.register({ subject }, slug, audience);
+            } catch (err) {
+                console.warn(`[Tours] trip ${slug}: not registered with the sharing system: ${String((err && err.message) || err).slice(0, 200)}`);
+            }
+        }
         return { ok: true, trip: wireTrip(row), city };
     }
 
@@ -476,12 +505,13 @@ function createStore(s, { config = {} } = {}) {
         return rows.map((r) => ({ ...wireTrip(r), city_slug: r.city_slug || null, city_name: r.city_name || null }));
     }
 
-    async function tripBySlug(slug, { subject = null } = {}) {
+    async function tripBySlug(slug, { subject = null, viewer = null } = {}) {
         const row = await db.maybe(`SELECT t.*, c.slug AS city_slug, c.name AS city_name, c.lat AS city_lat, c.lon AS city_lon
             FROM tours_trips t LEFT JOIN tours_cities c ON c.id = t.city_id WHERE t.slug = $1`, [String(slug || '')]);
         if (!row) return null;
-        const mine = subject && row.owner_subject === subject;
-        if (!mine && row.visibility !== 'shared') return null;
+        const mine = Boolean(subject && row.owner_subject === subject);
+        const access = await shareAccess(viewer || (subject ? { subject } : null), row);
+        if (!mine && !access.view) return null;
         const [places, route, staysRows] = await Promise.all([
             db.many(`SELECT p.*, c.slug AS city_slug, c.name AS city_name, tp.position, tp.note AS trip_note
                 FROM tours_trip_places tp JOIN tours_places p ON p.id = tp.place_id JOIN tours_cities c ON c.id = p.city_id
@@ -498,22 +528,39 @@ function createStore(s, { config = {} } = {}) {
             trip: { ...wireTrip(row), city_slug: row.city_slug || null, city_name: row.city_name || null,
                 city_lat: num(row.city_lat), city_lon: num(row.city_lon) },
             mine: Boolean(mine),
+            canEdit: Boolean(mine || access.edit),
+            audience: access.audience || (row.visibility === 'shared' ? 'link' : 'private'),
             places: places.map((p) => ({ ...wirePlace(p), position: Number(p.position), trip_note: p.trip_note || null })),
             route: routeOut,
             stays: staysRows.map(wireStay),
         };
     }
 
-    async function updateTrip({ subject, slug, input }) {
+    async function updateTrip({ subject, slug, input, viewer = null }) {
         const row = await db.maybe('SELECT * FROM tours_trips WHERE slug = $1', [String(slug || '')]);
         if (!row) return refusal(404, 'tours.trip_not_found', 'no such trip');
-        if (row.owner_subject !== subject) return refusal(403, 'tours.trip_owner', 'only the person who made this trip can change it');
+        const mine = row.owner_subject === subject;
+        const access = await shareAccess(viewer || (subject ? { subject } : null), row);
+        if (!mine && !access.edit) {
+            return refusal(403, 'tours.trip_owner', 'only the people this trip is shared with, with Can edit, can change it');
+        }
+        const body = { ...(input || {}) };
+        // Who can open it is the Share sheet's (the owner's), never an editor's; the old API field still maps onto it.
+        if (body.visibility !== undefined && !mine) delete body.visibility;
         const base = {
             title: row.title, city_slug: null, starts_on: day(row.starts_on), ends_on: day(row.ends_on),
             notes: row.notes || '', visibility: row.visibility,
         };
-        const merged = tripFields(input || {}, base);
-        if (input && input.city_slug !== undefined) {
+        const merged = tripFields(body, base);
+        if (merged.visibility !== row.visibility && mine && sharing) {
+            const want = merged.visibility === 'shared' ? 'link' : 'private';
+            try {
+                if (!access.registered) await sharing.register({ subject }, row.slug, want);
+                else await sharing.setAudience({ subject }, row.slug, want);
+            } catch (err) { return refusal(400, 'tours.trip.invalid', String((err && err.message) || 'that audience was not saved')); }
+            merged.visibility = want === 'link' ? 'shared' : 'private';
+        }
+        if (body.city_slug !== undefined) {
             const city = await cityBySlug(merged.city_slug);
             if (!city) return refusal(400, 'tours.trip.invalid', 'city_slug must name a city Tours knows');
             merged.city_id = city.id;
@@ -534,15 +581,18 @@ function createStore(s, { config = {} } = {}) {
         return { ok: true };
     }
 
-    async function ownedTrip(subject, slug) {
+    async function editableTrip(viewer, slug) {
+        const subject = viewer && viewer.subject ? viewer.subject : null;
         const row = await db.maybe('SELECT * FROM tours_trips WHERE slug = $1', [String(slug || '')]);
         if (!row) return { error: refusal(404, 'tours.trip_not_found', 'no such trip') };
-        if (row.owner_subject !== subject) return { error: refusal(403, 'tours.trip_owner', 'only the person who made this trip can change it') };
+        if (subject && row.owner_subject === subject) return { row };
+        const access = await shareAccess(viewer, row);
+        if (!access.edit) return { error: refusal(403, 'tours.trip_owner', 'only the person who made this trip, or somebody it is shared with with Can edit, can change it') };
         return { row };
     }
 
-    async function addTripPlace({ subject, slug, placeId, note = null }) {
-        const own = await ownedTrip(subject, slug);
+    async function addTripPlace({ viewer, subject = null, slug, placeId, note = null }) {
+        const own = await editableTrip(viewer || (subject ? { subject } : null), slug);
         if (own.error) return own.error;
         const place = await placeById(placeId);
         if (!place) return refusal(404, 'tours.place_not_found', 'no such place');
@@ -553,16 +603,16 @@ function createStore(s, { config = {} } = {}) {
         return { ok: true, place };
     }
 
-    async function removeTripPlace({ subject, slug, placeId }) {
-        const own = await ownedTrip(subject, slug);
+    async function removeTripPlace({ viewer, subject = null, slug, placeId }) {
+        const own = await editableTrip(viewer || (subject ? { subject } : null), slug);
         if (own.error) return own.error;
         await db.exec('DELETE FROM tours_trip_places WHERE trip_id = $1 AND place_id = $2', [own.row.id, String(placeId || '')]);
         await db.exec('UPDATE tours_trips SET revision = revision + 1, updated_at = now() WHERE id = $1', [own.row.id]);
         return { ok: true };
     }
 
-    async function setTripRoute({ subject, slug, routeId }) {
-        const own = await ownedTrip(subject, slug);
+    async function setTripRoute({ viewer, subject = null, slug, routeId }) {
+        const own = await editableTrip(viewer || (subject ? { subject } : null), slug);
         if (own.error) return own.error;
         if (!routeId) {
             await db.exec('DELETE FROM tours_trip_routes WHERE trip_id = $1', [own.row.id]);
@@ -577,8 +627,8 @@ function createStore(s, { config = {} } = {}) {
         return { ok: true };
     }
 
-    async function addTripStay({ subject, slug, stayId }) {
-        const own = await ownedTrip(subject, slug);
+    async function addTripStay({ viewer, subject = null, slug, stayId }) {
+        const own = await editableTrip(viewer || (subject ? { subject } : null), slug);
         if (own.error) return own.error;
         const stay = await db.maybe('SELECT * FROM tours_stays WHERE id = $1', [String(stayId || '')]);
         if (!stay) return refusal(404, 'tours.stay_not_found', 'no such stay');
@@ -588,8 +638,8 @@ function createStore(s, { config = {} } = {}) {
         return { ok: true, stay: wireStay(stay) };
     }
 
-    async function removeTripStay({ subject, slug, stayId }) {
-        const own = await ownedTrip(subject, slug);
+    async function removeTripStay({ viewer, subject = null, slug, stayId }) {
+        const own = await editableTrip(viewer || (subject ? { subject } : null), slug);
         if (own.error) return own.error;
         await db.exec('DELETE FROM tours_trip_stays WHERE trip_id = $1 AND stay_id = $2', [own.row.id, String(stayId || '')]);
         await db.exec('UPDATE tours_trips SET revision = revision + 1, updated_at = now() WHERE id = $1', [own.row.id]);

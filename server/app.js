@@ -28,6 +28,7 @@ const { createSso } = require('./auth/sso');
 const { createPrincipal } = require('./http/principal');
 const { createApi } = require('./http/api');
 const { createPageRoutes } = require('./http/pages');
+const { createSharing } = require('./sharing');
 const { createServiceReadiness } = require('./observability');
 const { assetVersion, send } = require('./render/layout');
 const { raw } = require('./render/html');
@@ -52,7 +53,9 @@ async function createApp(opts = {}) {
     const keys = createKeyStore({ config, fetchImpl, log });
     const sso = createSso({ config, keys, fetchImpl, now: s.now, log });
     const principal = createPrincipal({ config, keys });
-    const store = dataStore(s, { config });
+    // The one sharing system (design 2026-11-06): a trip is its owner's until the Share sheet says otherwise.
+    const sharing = opts.sharing || createSharing({ db: s.db, config, fetchImpl, log });
+    const store = dataStore(s, { config, sharing });
     const jobs = createJobs({ config, s, store, fetchImpl, log });
     // The places, cities and walks in OpenVibe.Search (started by server/index.js, never under TOURS_DRILL).
     const searchIndex = createSearchIndex({ config, s, log });
@@ -62,7 +65,7 @@ async function createApp(opts = {}) {
         ? createNetworkSender({ networkInternalUrl: config.networkInternalUrl, clientId: config.oauth.clientId, clientSecret: config.oauth.clientSecret, fetch: fetchImpl })
         : async () => { throw new Error('OV_OAUTH_CLIENT_SECRET is not set: Tours cannot answer account events'); });
 
-    const ctx = { config, s, keys, sso, principal, store, jobs, searchIndex, accountData, accountSend, log };
+    const ctx = { config, s, keys, sso, principal, store, jobs, searchIndex, accountData, accountSend, sharing, log };
 
     const app = express();
     // /.well-known/agent.json (openvibe-shared/agent-layer, SEO-2): what this site serves, for agents.
@@ -140,6 +143,26 @@ async function createApp(opts = {}) {
 
     // ── API ─────────────────────────────────────────────────
     app.use('/api/v1', rateLimit({ windowMs: 60_000, limit: Number(process.env.TOURS_API_RATE_LIMIT_PER_MIN) || 240, standardHeaders: true, legacyHeaders: false, handler: (req, res) => contracts.http.sendProblem(res, 429, 'rate_limited', { detail: 'too many requests from this address; retry shortly', ctx: req.ov }) }));
+    // ── /api/v1/trip/:slug/share — the one Share sheet's API (openvibe-sdk/share) ──
+    // GET/PUT .../share, .../share/requests, .../share/transfer[/accept|decline|cancel], GET /api/v1/share/people
+    // and /api/v1/shared-with-me. Access is still decided by canView on every read path; the router answers only
+    // its own paths.
+    {
+        const shareApi = express.Router();
+        shareApi.use(sharing.shares.router({
+            service: 'tours',
+            authenticate: (req) => sharing.shareViewer(req.viewer),
+            describe: sharing.describe,
+        }));
+        const SHARE_PATH = /^\/api\/v1\/(?:shared-with-me$|share\/people$|[^/]+\/[^/]+\/share(?:\/|$))/;
+        app.use((req, res, next) => (SHARE_PATH.test(req.path) ? shareApi(req, res, next) : next()));
+    }
+    // Expire members and transfers and send queued share events/notifications. Unref'd: it never holds a test open.
+    if (opts.startSharingWorker !== false) {
+        const timer = setInterval(() => { sharing.work().catch(() => { /* logged inside */ }); }, 15_000);
+        if (timer.unref) timer.unref();
+        app.locals.sharingTimer = timer;
+    }
     app.use('/api/v1', createApi(ctx));
     // GET /openapi.json (SEO-3): the API's OpenAPI 3.1 document, the same one /api/v1/openapi.json serves.
     app.get('/openapi.json', (_req, res) => res.set('Cache-Control', 'public, max-age=3600').set('Access-Control-Allow-Origin', '*').json(require('./openapi').document));

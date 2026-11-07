@@ -149,22 +149,22 @@ function createApi(ctx) {
 
     r.get('/trips/:slug', async (req, res) => {
         const subject = req.principal.kind === 'user' ? req.principal.subject : null;
-        const out = await store.tripBySlug(String(req.params.slug || ''), { subject });
+        const out = await store.tripBySlug(String(req.params.slug || ''), { subject, viewer: req.principal.kind === 'user' ? { subject } : null });
         if (!out) return problem(res, 404, 'tours.trip_not_found', 'No such trip, or it is private.');
-        res.set('Cache-Control', out.mine ? 'private, no-store' : 'public, max-age=60');
-        return res.json({ trip: out.trip, mine: out.mine, places: out.places, route: out.route, stays: out.stays });
+        res.set('Cache-Control', out.mine || out.audience === 'people' || out.audience === 'private' ? 'private, no-store' : 'public, max-age=60');
+        return res.json({ trip: out.trip, mine: out.mine, canEdit: out.canEdit, audience: out.audience, places: out.places, route: out.route, stays: out.stays });
     });
 
     r.patch('/trips/:slug', async (req, res) => {
         const p = person(req, res); if (!p) return undefined;
-        const out = await store.updateTrip({ subject: p.subject, slug: String(req.params.slug || ''), input: req.body && typeof req.body === 'object' ? req.body : {} });
+        const out = await store.updateTrip({ subject: p.subject, viewer: p, slug: String(req.params.slug || ''), input: req.body && typeof req.body === 'object' ? req.body : {} });
         if (!out.ok) return refuse(res, out);
         return res.json(out.trip);
     });
 
     r.delete('/trips/:slug', async (req, res) => {
         const p = person(req, res); if (!p) return undefined;
-        const out = await store.deleteTrip({ subject: p.subject, slug: String(req.params.slug || '') });
+        const out = await store.deleteTrip({ subject: p.subject, viewer: p, slug: String(req.params.slug || '') });
         if (!out.ok) return refuse(res, out);
         return res.status(204).end();
     });
@@ -173,14 +173,14 @@ function createApi(ctx) {
         const p = person(req, res); if (!p) return undefined;
         const b = req.body && typeof req.body === 'object' ? req.body : {};
         if (!b.place_id) return invalid(res, 'place_id is required', 'place_id');
-        const out = await store.addTripPlace({ subject: p.subject, slug: String(req.params.slug || ''), placeId: b.place_id, note: b.note });
+        const out = await store.addTripPlace({ subject: p.subject, viewer: p, slug: String(req.params.slug || ''), placeId: b.place_id, note: b.note });
         if (!out.ok) return refuse(res, out);
         return res.status(201).json(out.place);
     });
 
     r.delete('/trips/:slug/places/:placeId', async (req, res) => {
         const p = person(req, res); if (!p) return undefined;
-        const out = await store.removeTripPlace({ subject: p.subject, slug: String(req.params.slug || ''), placeId: String(req.params.placeId || '') });
+        const out = await store.removeTripPlace({ subject: p.subject, viewer: p, slug: String(req.params.slug || ''), placeId: String(req.params.placeId || '') });
         if (!out.ok) return refuse(res, out);
         return res.status(204).end();
     });
@@ -188,7 +188,7 @@ function createApi(ctx) {
     r.post('/trips/:slug/route', async (req, res) => {
         const p = person(req, res); if (!p) return undefined;
         const b = req.body && typeof req.body === 'object' ? req.body : {};
-        const out = await store.setTripRoute({ subject: p.subject, slug: String(req.params.slug || ''), routeId: b.route_id || null });
+        const out = await store.setTripRoute({ subject: p.subject, viewer: p, slug: String(req.params.slug || ''), routeId: b.route_id || null });
         if (!out.ok) return refuse(res, out);
         return res.json({ ok: true });
     });
@@ -197,14 +197,14 @@ function createApi(ctx) {
         const p = person(req, res); if (!p) return undefined;
         const b = req.body && typeof req.body === 'object' ? req.body : {};
         if (!b.stay_id) return invalid(res, 'stay_id is required', 'stay_id');
-        const out = await store.addTripStay({ subject: p.subject, slug: String(req.params.slug || ''), stayId: b.stay_id });
+        const out = await store.addTripStay({ subject: p.subject, viewer: p, slug: String(req.params.slug || ''), stayId: b.stay_id });
         if (!out.ok) return refuse(res, out);
         return res.status(201).json(out.stay);
     });
 
     r.delete('/trips/:slug/stays/:stayId', async (req, res) => {
         const p = person(req, res); if (!p) return undefined;
-        const out = await store.removeTripStay({ subject: p.subject, slug: String(req.params.slug || ''), stayId: String(req.params.stayId || '') });
+        const out = await store.removeTripStay({ subject: p.subject, viewer: p, slug: String(req.params.slug || ''), stayId: String(req.params.stayId || '') });
         if (!out.ok) return refuse(res, out);
         return res.status(204).end();
     });
