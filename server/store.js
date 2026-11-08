@@ -685,7 +685,25 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         return { ok: true };
     }
 
+    /** Places with a Wikidata item and no photo, not tried in the last week: the best ranked first. */
+    async function placesWithoutPhoto({ limit = 60 } = {}) {
+        return db.many(`SELECT id, wikidata_id, name FROM tours_places
+            WHERE image_url IS NULL AND wikidata_id IS NOT NULL
+              AND (photo_tried_at IS NULL OR photo_tried_at < now() - interval '7 days')
+            ORDER BY rank_score DESC NULLS LAST, id LIMIT $1`, [Math.max(1, Math.min(200, Number(limit) || 60))]);
+    }
+    /** A photo found for a stored place (credited), or only the time it was looked for. */
+    async function setPlacePhoto(id, p) {
+        if (!p || !p.imageUrl) { await db.exec('UPDATE tours_places SET photo_tried_at = now() WHERE id = $1', [id]); return false; }
+        await db.exec(`UPDATE tours_places SET image_url = $2, image_credit = $3, image_license = $4, image_license_url = $5,
+            image_source_url = $6, gallery = $7::jsonb, photo_tried_at = now(), updated_at = now() WHERE id = $1`,
+        [id, p.imageUrl, p.imageCredit ? clean(p.imageCredit, 250) : null, p.imageLicense ? clean(p.imageLicense, 120) : null,
+            p.imageLicenseUrl || null, p.imageSourceUrl || null, JSON.stringify(Array.isArray(p.gallery) ? p.gallery : [])]);
+        return true;
+    }
+
     return {
+        placesWithoutPhoto, setPlacePhoto,
         counts, listCities, cityBySlug, cityById, cityPlaces, cityRoutes, cityLive, placeLive, cityStays, citiesForOsm, markCityOsmFetched, markCityOsmAttempted,
         placeById, updatePlaceGuide, routeById, routes, routesForPlace, placeOfTheDay, liveNow, recentTours, stays,
         latestJobRuns, recordJobStart, recordJobFinish,

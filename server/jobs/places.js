@@ -243,6 +243,19 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             }
         }
 
+        // 1b. Places stored without a photo (a copy refused on 11-08, or a photo added to Commons since): a bounded
+        // batch per run, tried again after a week.
+        try {
+            const bare = await store.placesWithoutPhoto({ limit: 60 });
+            if (bare.length) {
+                const pictured = await photosFor(bare.map((r) => ({ id: r.id, wikidataId: r.wikidata_id, name: r.name })));
+                result.photos = 0;
+                for (const p of pictured) if (await store.setPlacePhoto(p.id, p)) result.photos += 1;
+            }
+        } catch (err) {
+            result.errors.push(`photos: ${err && err.message}`);
+        }
+
         // 2. OpenStreetMap for the cities whose OSM data is oldest, bounded per run.
         const want = Math.min(100, Math.max(0, Number(osmLimit) || 0));
         if (!want) return result;
