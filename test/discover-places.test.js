@@ -5,7 +5,7 @@ const { reusableImage } = require('../server/sources/wikidata');
 const { overpassQuery } = require('../server/sources/osm');
 const { streamOf, clipOf, placeIdOf } = require('../server/sources/live');
 const { rankPlace } = require('../server/jobs/places');
-const { extractGuide } = require('../server/sources/wikidata');
+const { extractGuide, parseEntity } = require('../server/sources/wikidata');
 
 (async () => {
     await check('only credited, reusable Commons licences are accepted', async () => {
@@ -19,6 +19,7 @@ const { extractGuide } = require('../server/sources/wikidata');
         assert.match(guide.features, /Bamboo Grove/);
         assert.match(guide.visit, /public tour/);
         assert.match(guide.season, /fall/);
+        assert.strictEqual(parseEntity({ id: 'Q1', claims: { P373: [{ mainsnak: { datavalue: { value: 'Kubota Garden' } } }] } }).commonsCategory, 'Category:Kubota Garden');
     });
     await check('only canonical Tours place links attach Live streams and clips', async () => {
         const id = 'plc_0123456789ABCDEFGHJKMNPQRS';

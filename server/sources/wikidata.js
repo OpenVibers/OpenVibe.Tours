@@ -35,6 +35,7 @@ function parseEntity(entity) {
     const coord = firstClaim(entity, 'P625');
     const pop = firstClaim(entity, 'P1082');
     const image = firstClaim(entity, 'P18');
+    const commonsCategory = firstClaim(entity, 'P373');
     const country = firstClaim(entity, 'P17');
     const label = (entity.labels && entity.labels.en && entity.labels.en.value) || null;
     const sitelink = entity.sitelinks && entity.sitelinks.enwikivoyage && entity.sitelinks.enwikivoyage.title;
@@ -46,6 +47,7 @@ function parseEntity(entity) {
         lon: coord && Number.isFinite(Number(coord.longitude)) ? Number(coord.longitude) : null,
         population: pop && Number.isFinite(Number(String(pop.amount || '').replace(/^\+/, ''))) ? Number(String(pop.amount).replace(/^\+/, '')) : null,
         image: image ? String(image) : null,
+        commonsCategory: typeof commonsCategory === 'string' ? `Category:${commonsCategory}` : null,
         countryQid: country && typeof country === 'object' && country.id ? country.id : null,
         wikivoyageTitle: sitelink || null,
         wikipediaTitle: wikipediaTitle || null,

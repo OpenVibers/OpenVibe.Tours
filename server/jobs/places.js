@@ -85,10 +85,12 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         });
         const galleries = new Map();
         for (let i = 0, searched = 0; i < places.length && searched < 5; i++) {
-            if (!/^Category:/i.test(String(places[i].imageFile || ''))) continue;
+            const category = /^Category:/i.test(String(places[i].imageFile || ''))
+                ? places[i].imageFile : entities.get(places[i].wikidataId)?.commonsCategory;
+            if (!category) continue;
             searched += 1;
             try {
-                const found = (await wikidata.categoryFiles(places[i].imageFile)).slice(0, 3);
+                const found = (await wikidata.categoryFiles(category)).slice(0, 3);
                 galleries.set(i, found);
                 if (!files[i]) files[i] = found[0] || null;
             } catch { /* no verified photo */ }
