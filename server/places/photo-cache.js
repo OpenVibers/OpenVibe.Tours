@@ -3,10 +3,12 @@
 // A checked Commons image is copied once into Media as a public object. The file's Commons page,
 // author and licence stay on the place row; Media serves only the smaller image bytes.
 // Media takes at most 30 uploads a minute from one caller (media.object.upload); one every UPLOAD_GAP_MS stays under it.
-const UPLOAD_GAP_MS = 2_100;
+const UPLOAD_GAP_MS = 2_500;
+// One pace for the whole process: the places job and on-demand discovery each make a cache, and together they must
+// stay under Media's limit too.
+let nextUploadAt = 0;
 function createPhotoCache({ config, s, fetchImpl = globalThis.fetch, log = console, objectsClient = null, uploadGapMs = UPLOAD_GAP_MS }) {
     let objects = objectsClient;
-    let nextUploadAt = 0;
     async function uploadSlot() {
         const now = Date.now();
         const at = Math.max(now, nextUploadAt);

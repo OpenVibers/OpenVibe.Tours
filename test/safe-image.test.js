@@ -31,6 +31,10 @@ assert.ok(safeImage('https://upload.wikimedia.org/wikipedia/commons/a/ab/Hachiko
 assert.ok(safeImage('https://commons.wikimedia.org/wiki/Special:FilePath/Hachiko.jpg?width=640'), 'Commons file paths');
 assert.ok(safeImage('https://openvibe.media/files/tower.webp'), 'an OpenVibe image');
 assert.strictEqual(safeImage('https://openvibe.media/gallery'), null, 'a page is not a picture');
+// Media answers a public object at /o/<id> (no extension): the place photos Tours copies there (11-08: all were refused).
+assert.ok(safeImage('https://openvibe.media/o/med_01JCX9S3K2M4N5P6Q7R8S9T0VW'), 'a Media public object');
+assert.strictEqual(safeImage('https://openvibe.media/o/../admin'), null, 'only an object id');
+assert.strictEqual(safeImage('https://openvibe.media/o/'), null, 'an id is required');
 // Only hosts the page's img-src allows: anything else would be refused and draw a broken image (2026-11-02).
 assert.strictEqual(safeImage('https://images.mapillary.com/6Vri6u81GdjqVKBQTbQYBg/thumb-2048.jpg'), null, 'Mapillary is not allowed');
 assert.strictEqual(safeImage('https://example.com/photos/tower.webp'), null, 'an image on another host');
