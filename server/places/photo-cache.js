@@ -2,8 +2,11 @@
 
 // A checked Commons image is copied once into Media as a public object. The file's Commons page,
 // author and licence stay on the place row; Media serves only the smaller image bytes.
-// Media takes at most 30 uploads a minute from one caller (media.object.upload); one every UPLOAD_GAP_MS stays under it.
-const UPLOAD_GAP_MS = 2_500;
+// Media takes at most 30 uploads a minute and 600 an hour from one caller (media.object.upload, 429 rate_limited).
+// One every UPLOAD_GAP_MS stays under both (about 550 an hour); a 429 pauses every copy for PAUSE_MS.
+const UPLOAD_GAP_MS = 6_500;
+const PAUSE_MS = 10 * 60 * 1000;
+let pausedUntil = 0;
 // One pace for the whole process: the places job and on-demand discovery each make a cache, and together they must
 // stay under Media's limit too.
 let nextUploadAt = 0;
@@ -29,6 +32,8 @@ function createPhotoCache({ config, s, fetchImpl = globalThis.fetch, log = conso
     }
     async function cache(image) {
         if (!image?.sourceUrl || !image?.url) return image;
+        // Media said "too many" a moment ago: skip (the place is deferred and tried at the next run).
+        if (Date.now() < pausedUntil) return null;
         if (config.drill) return image.provider === 'openverse' ? null : image;
         if (!config.oauth.clientSecret) return null;
         const old = await s.db.maybe('SELECT media_url FROM tours_photo_assets WHERE source_url=$1', [image.sourceUrl]);
@@ -64,6 +69,11 @@ function createPhotoCache({ config, s, fetchImpl = globalThis.fetch, log = conso
                 ON CONFLICT(source_url) DO NOTHING`, [image.sourceUrl, obj.id, url]);
             return { ...image, url };
         } catch (err) {
+            if (err && (err.status === 429 || /\b429\b|rate_limited/.test(String(err.message)))) {
+                if (Date.now() >= pausedUntil) log.warn(`[Tours photos] Media is rate limiting uploads: copies pause for ${PAUSE_MS / 60000} minutes (${err.message})`);
+                pausedUntil = Date.now() + PAUSE_MS;
+                return null;
+            }
             log.warn(`[Tours photos] Media copy unavailable: ${err.message}`);
             return null;
         }

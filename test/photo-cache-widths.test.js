@@ -44,5 +44,15 @@ const objectsClient = { upload: async (bytes) => { uploaded.push(bytes.length); 
         objectsClient: { upload: async () => { times.push(Date.now()); return { id: 'o', public_url: 'https://openvibe.media/api/v2/tours/objects/o' }; } } });
     await Promise.all([paced.cache({ ...image, sourceUrl: image.sourceUrl + '1' }), paced.cache({ ...image, sourceUrl: image.sourceUrl + '2' })]);
     assert.ok(times.length === 2 && times[1] - times[0] >= 140, 'one upload per gap');
+    // 5. Media says 429: copies pause (the next one downloads nothing) and the pause is logged once.
+    const warned429 = [];
+    let fetched = 0;
+    const limited = createPhotoCache({ config, s: { db }, uploadGapMs: 0, log: { warn: (m) => warned429.push(m) }, fetchImpl: async () => { fetched += 1; return ok(); },
+        objectsClient: { upload: async () => { throw Object.assign(new Error("POST /objects -> 429 rate_limited"), { status: 429 }); } } });
+    assert.strictEqual(await limited.cache({ ...image, sourceUrl: image.sourceUrl + "429a" }), null);
+    const before = fetched;
+    assert.strictEqual(await limited.cache({ ...image, sourceUrl: image.sourceUrl + "429b" }), null);
+    assert.strictEqual(fetched, before, "paused: nothing is downloaded");
+    assert.strictEqual(warned429.filter((m) => /rate limiting uploads/.test(m)).length, 1, "the pause is logged once");
     console.log('photo cache: 960px first, the imageinfo URL as fallback, refusals logged');
 })().catch((e) => { console.error(e); process.exitCode = 1; });
