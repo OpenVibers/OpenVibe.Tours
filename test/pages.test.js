@@ -30,8 +30,8 @@ const { seed } = require('./helpers/seed');
             assert.match(r.text, /width="640" height="360"/, 'the card shape is declared');
             const cities = await t.get('/cities');
             assert.strictEqual(cities.status, 200);
-            assert.match(cities.text, /sizes="58px"/, 'a city row says the 58 px it draws');
-            assert.match(cities.text, /\/160px-Tokyo_test\.jpg 160w[^"]*\/330px-Tokyo_test\.jpg 330w/, 'a city row carries 160/330');
+            assert.match(cities.text, /width="58" height="44"/, 'a city row declares its compact image size');
+            assert.match(cities.text, /\/1280px-Tokyo_test\.jpg/, 'a city row uses the verified Commons thumbnail');
             // The FAQPage data asks exactly the questions the page shows (structured data names what is on the page).
             const ld = [...r.text.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].flatMap((m) => [].concat(JSON.parse(m[1])))
                 .flatMap((x) => (x['@graph'] ? x['@graph'] : [x]));

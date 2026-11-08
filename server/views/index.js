@@ -67,10 +67,10 @@ function pictureImg(u, { alt = '', sizes = '(max-width: 720px) 80vw, 330px', wid
     const srcset = pairs.length ? ` srcset="${esc(pairs.map(([w, v]) => `${v} ${w}w`).join(', '))}" sizes="${esc(sizes)}"` : '';
     return `<img src="${esc(src)}"${srcset} width="${width}" height="${height}" alt="${esc(alt)}"${eager ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
 }
-/** kit.card with a Wikimedia picture resized to the card's 16:9 shape; any other card is unchanged. */
+/** Give safe card pictures a stable 16:9 box, using the verified Commons or Media URL. */
 function card(opts) {
     const html = kit.card(opts);
-    if (!imageWidth(opts.image, IMAGE_WIDTHS[0])) return html;
+    if (!safeImage(opts.image)) return html;
     return html.replace(/<img\b[^>]*>/, pictureImg(opts.image, { alt: opts.alt || '', sizes: '(max-width: 720px) 80vw, 330px' }));
 }
 const money = (n, c) => `${Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })} ${c}`;
