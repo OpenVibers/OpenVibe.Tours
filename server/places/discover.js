@@ -29,7 +29,44 @@ function createDiscover({ config, s, store, jobs, fetchImpl = globalThis.fetch, 
         const key = keyOf(name);
         if (key.length < 2 || key.length > 80) return null;
         const existing = await store.cityBySlug(slugify(key));
-        if (existing) return existing;
+        if (existing) {
+            if (!populate) return existing;
+            if (pending.has(`city:${key}`)) return pending.get(`city:${key}`);
+            const task = (async () => {
+                const source = await store.citySource(existing.id);
+                let stored = null;
+                try { stored = JSON.parse(source?.wikitext || 'null'); } catch { /* old source format */ }
+                let pages = Array.isArray(stored?.pages) ? [...stored.pages] : [];
+                if (!pages.length) {
+                    const main = await wikivoyage.page(existing.wikivoyage_title || existing.name);
+                    if (main) pages = [main];
+                }
+                const districts = pages.length ? parseCityPage(pages[0].wikitext, pages[0].title,
+                    { districts: config.openData.districtPages }).districts : [];
+                const known = new Set(pages.map((p) => p.title));
+                const missing = districts.filter((title) => !known.has(title));
+                for (const title of missing) {
+                    try {
+                        const sub = await wikivoyage.page(title);
+                        if (sub) pages.push(sub);
+                    } catch (err) { log.warn(`[Tours discover] Wikivoyage ${title}: ${err.message}`); }
+                }
+                if (pages.length && (!source || missing.length)) await store.upsertCitySource(existing.id, {
+                    wikivoyageTitle: pages[0].title, wikitext: JSON.stringify({ pages }),
+                    sourceUrl: pages[0].sourceUrl, fetchedAt: pages[0].fetchedAt,
+                });
+                const notable = await s.db.maybe(`SELECT city_id FROM tours_wikidata_city_places
+                    WHERE city_id=$1 AND fetched_at > now()-interval '7 days'`, [existing.id]);
+                const osmFresh = existing.osm_fetched_at && Date.now() - new Date(existing.osm_fetched_at).getTime() < 7 * 86_400_000;
+                if (missing.length || !notable || !osmFresh) {
+                    try { await jobs.places.populateCity(existing); }
+                    catch (err) { log.warn(`[Tours discover] places ${existing.name}: ${err.message}`); }
+                }
+                return store.cityBySlug(existing.slug);
+            })().finally(() => pending.delete(`city:${key}`));
+            pending.set(`city:${key}`, task);
+            return task;
+        }
         const cached = await s.db.maybe('SELECT city_id FROM tours_city_lookup WHERE query=$1 AND expires_at > now()', [key]);
         if (cached) return cached.city_id ? store.cityById(cached.city_id) : null;
         if (pending.has(`city:${key}`)) return pending.get(`city:${key}`);
@@ -65,10 +102,20 @@ function createDiscover({ config, s, store, jobs, fetchImpl = globalThis.fetch, 
                 city.wikivoyageTitle = page.title;
             }
             const cityId = await store.upsertCity(city);
-            if (page) await store.upsertCitySource(cityId, {
-                wikivoyageTitle: page.title, wikitext: JSON.stringify({ pages: [page] }),
-                sourceUrl: page.sourceUrl, fetchedAt: page.fetchedAt,
-            });
+            if (page) {
+                const pages = [page];
+                const districts = parseCityPage(page.wikitext, page.title, { districts: config.openData.districtPages }).districts;
+                for (const district of districts) {
+                    try {
+                        const sub = await wikivoyage.page(district);
+                        if (sub) pages.push(sub);
+                    } catch (err) { log.warn(`[Tours discover] Wikivoyage ${district}: ${err.message}`); }
+                }
+                await store.upsertCitySource(cityId, {
+                    wikivoyageTitle: page.title, wikitext: JSON.stringify({ pages }),
+                    sourceUrl: page.sourceUrl, fetchedAt: page.fetchedAt,
+                });
+            }
             await s.db.exec(`INSERT INTO tours_city_lookup(query, city_id, expires_at) VALUES ($1,$2,now()+interval '30 days')
                 ON CONFLICT(query) DO UPDATE SET city_id=EXCLUDED.city_id, expires_at=EXCLUDED.expires_at`, [key, cityId]);
             const stored = await store.cityById(cityId);

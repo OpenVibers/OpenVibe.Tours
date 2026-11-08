@@ -3,10 +3,10 @@
 /**
  * The places job, in two passes:
  *
- *   1. Wikivoyage: every city's stored See listings with coordinates become a cited place (CC BY-SA) unless an
+ *   1. Wikivoyage: every city's stored See and Do listings with coordinates become a cited place (CC BY-SA) unless an
  *      OpenStreetMap place of the same name or within 120 m is already stored. This makes every city populated
  *      even when Overpass is queueing.
- *   2. OpenStreetMap: one bounded `tourism=*` Overpass query for the cities whose OSM data is oldest, limited by
+ *   2. OpenStreetMap: one bounded, named-destination Overpass query for the cities whose OSM data is oldest, limited by
  *      TOURS_OSM_CITIES_PER_RUN so one run never hammers the public instance. ODbL; every place keeps its
  *      openstreetmap.org URL and the fetch time. A failure leaves the previous rows and the Wikivoyage fallback.
  */
@@ -17,10 +17,11 @@ const { createOpenverse } = require('../sources/openverse');
 const { fetchJson } = require('../sources/http');
 const { parseCityPage } = require('../sources/wikivoyage');
 const { stableId } = require('../store');
+const { isPlace } = require('../places/is-place');
 
 // A run under older rules is not fresh (jobs/index.js): name-en-1 stored OpenStreetMap's English names; wv-text-1
 // rewrites the stored Wikivoyage places' text with the current parser.
-const PLACES_VERSION = 'wv-text-1';
+const PLACES_VERSION = 'notable-places-2';
 
 function commonsFile(value) {
     const raw = String(value || '').trim();
@@ -43,6 +44,11 @@ function rankPlace(place, entity, views = 0) {
         + Math.min(1000, Number(entity?.sitelinks || 0)) * 20
         + Math.round(Math.log10(Math.max(0, views) + 1) * 1000)
         + (place.imageUrl ? 500 : 0) + (place.description ? 200 : 0);
+}
+
+function whyAfterLead(text) {
+    const sentences = String(text || '').match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()) || [];
+    return sentences.slice(1, 4).join(' ').slice(0, 600) || null;
 }
 
 function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
@@ -114,7 +120,8 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             }
             const pictured = cached ? { ...p, imageUrl: cached.url, imageCredit: cached.credit,
                 imageLicense: cached.license, imageLicenseUrl: cached.licenseUrl, imageSourceUrl: cached.sourceUrl, gallery } : p;
-            return { ...pictured, rankScore: rankPlace(pictured, entities.get(p.wikidataId), pageviews.get(p.wikidataId) || 0) };
+            return { ...pictured, rankScore: Math.max(Number(p.rankScore) || 0,
+                rankPlace(pictured, entities.get(p.wikidataId), pageviews.get(p.wikidataId) || 0)) };
         }));
     }
 
@@ -128,7 +135,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         else if (parsed && Array.isArray(parsed.pages)) {
             for (const page of parsed.pages) {
                 const p = parseCityPage(page.wikitext || '', page.title || '', { districts: 0 });
-                listings = listings.concat(p.see.map((x) => ({ ...x, pageUrl: page.sourceUrl || source.source_url })));
+                listings = listings.concat([...p.see, ...p.do].map((x) => ({ ...x, pageUrl: page.sourceUrl || source.source_url })));
             }
         }
         const existing = await store.cityPlaces(city.id, { limit: 200 });
@@ -138,7 +145,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         for (const listing of listings) {
             if (!listing.hasCoords || !Number.isFinite(Number(listing.lat)) || !Number.isFinite(Number(listing.lon))) continue;
             const name = String(listing.name || '').trim();
-            if (!name) continue;
+            if (!name || !isPlace(name)) continue;
             const key = name.toLowerCase();
             const osmId = stableId('wv', `${city.id}:${key}:${listing.lat}:${listing.lon}`);
             // A Wikivoyage place already stored is written again, so its text follows the parser (a description stored
@@ -155,6 +162,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
                 lat: Number(listing.lat),
                 lon: Number(listing.lon),
                 description: listing.note || null,
+                guideWhy: whyAfterLead(listing.note),
                 wikidataId: listing.wikidata || null,
                 source: 'wikivoyage',
                 sourceUrl: listing.pageUrl || source.source_url,
@@ -169,9 +177,36 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         return n;
     }
 
+    async function seedWikidata(city) {
+        if (!city.wikidata_id) return 0;
+        const cached = await s.db.maybe(`SELECT payload FROM tours_wikidata_city_places
+            WHERE city_id=$1 AND fetched_at > now()-interval '7 days'`, [city.id]);
+        let found = cached?.payload;
+        if (typeof found === 'string') found = JSON.parse(found);
+        if (!Array.isArray(found)) {
+            found = await wikidata.notablePlaces(city.wikidata_id);
+            await s.db.exec(`INSERT INTO tours_wikidata_city_places(city_id,payload) VALUES ($1,$2::jsonb)
+                ON CONFLICT(city_id) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=now()`, [city.id, JSON.stringify(found)]);
+        }
+        const existing = await store.cityPlaces(city.id, { limit: 200 });
+        const candidates = found.filter((x) => !existing.some((p) => p.wikidata_id === x.qid ||
+            p.name.toLowerCase() === x.name.toLowerCase() || distanceM(p, x) <= 120)).map((x) => ({
+            cityId: city.id, osmType: 'wikidata', osmId: x.qid, wikidataId: x.qid,
+            name: x.name, kind: 'attraction', lat: x.lat, lon: x.lon,
+            rankScore: Math.min(1000, x.sitelinks) * 20,
+            source: 'wikidata', sourceUrl: x.sourceUrl, fetchedAt: x.fetchedAt,
+        }));
+        const photographed = await photosFor(candidates);
+        for (const place of photographed) await store.upsertPlace(place);
+        return photographed.length;
+    }
+
     async function populateCity(city) {
         const seeded = await seedWikivoyage(city);
-        if (city.osm_fetched_at && Date.now() - new Date(city.osm_fetched_at).getTime() < 7 * 86_400_000) return { seeded, osm: 0 };
+        let notable = 0;
+        try { notable = await seedWikidata(city); }
+        catch (err) { log.warn(`[Tours places] Wikidata ${city.slug}: ${err.message}`); }
+        if (city.osm_fetched_at && Date.now() - new Date(city.osm_fetched_at).getTime() < 7 * 86_400_000) return { seeded, notable, osm: 0 };
         await store.markCityOsmAttempted(city.id);
         const { elements, fetchedAt } = await osm.tourism(city.lat, city.lon, config.openData.radiusM);
         const existing = await store.cityPlaces(city.id, { limit: 200 });
@@ -179,17 +214,19 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         const candidates = elements.map((el) => osm.placeFromElement(el, city.id, fetchedAt)).filter(Boolean);
         const photographed = await photosFor(candidates);
         let count = 0;
+        let ordinaryCount = 0;
         for (const place of photographed.sort((a, b) => (b.rankScore || 0) - (a.rankScore || 0))) {
-            if (count >= config.openData.maxPerCity) break;
+            if (!place.wikidataId && ordinaryCount >= config.openData.maxPerCity) continue;
             const key = `${place.osmType}:${place.osmId}`;
             if (seen.has(key)) continue;
             seen.add(key);
             if (existing.some((p) => p.source === 'wikivoyage' && (p.name.toLowerCase() === place.name.toLowerCase() || distanceM(p, place) <= 120))) continue;
             await store.upsertPlace(place);
             count += 1;
+            if (!place.wikidataId) ordinaryCount += 1;
         }
         await store.markCityOsmFetched(city.id);
-        return { seeded, osm: count };
+        return { seeded, notable, osm: count };
     }
 
     async function runOnce({ limit = config.openData.cityLimit, osmLimit = config.openData.osmCitiesPerRun } = {}) {

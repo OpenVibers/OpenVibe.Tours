@@ -71,6 +71,7 @@ function load(env = process.env) {
             rentPublic: trim(env.OV_RENT_PUBLIC_URL || 'https://openvibe.rent'),
             wikivoyage: trim(env.OV_WIKIVOYAGE_URL || 'https://en.wikivoyage.org'),
             wikidata: trim(env.OV_WIKIDATA_URL || 'https://www.wikidata.org'),
+            wikidataQuery: trim(env.OV_WIKIDATA_QUERY_URL || 'https://query.wikidata.org/sparql'),
             wikipedia: trim(env.OV_WIKIPEDIA_URL || 'https://en.wikipedia.org'),
             commons: trim(env.OV_COMMONS_URL || 'https://commons.wikimedia.org'),
             openverse: trim(env.OV_OPENVERSE_URL || 'https://api.openverse.org'),
@@ -89,7 +90,7 @@ function load(env = process.env) {
             maxPerCity: Math.min(200, Math.max(1, int(env.TOURS_OSM_MAX_PER_CITY, 80))),
             osmCitiesPerRun: Math.min(100, Math.max(0, int(env.TOURS_OSM_CITIES_PER_RUN, 10))),
             cityLimit: Math.min(200, Math.max(1, int(env.TOURS_CITY_LIMIT, 100))),
-            districtPages: Math.min(4, Math.max(0, int(env.TOURS_WIKIVOYAGE_DISTRICTS, 2))),
+            districtPages: Math.min(40, Math.max(0, int(env.TOURS_WIKIVOYAGE_DISTRICTS, 40))),
         },
 
         jobs: {

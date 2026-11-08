@@ -10,6 +10,7 @@
  *   imageInfo(files)      a Commons file's 1200px URL and its licence/credit (extmetadata)
  */
 const { fetchJson, SourceError } = require('./http');
+const { isPlace } = require('../places/is-place');
 
 // Commercial pages use only licences that permit reuse and derivatives. A Commons record without
 // both an author and a source is no better than an unlicensed hotlink.
@@ -57,19 +58,50 @@ function parseEntity(entity) {
 
 function extractGuide(extract, title) {
     const text = String(extract || '').replace(/\r/g, '').trim();
-    const intro = text.split(/\n\s*==/)[0].split(/(?<=[.!?])\s+/)[0]?.trim() || '';
+    const lead = text.split(/\n\s*==/)[0].trim();
+    const sentences = lead.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()) || [];
+    const intro = sentences[0] || '';
     if (!intro || intro.length < 20) return null;
+    const why = sentences.slice(1, 4).join(' ').slice(0, 600) || null;
     const section = (name) => text.match(new RegExp(`== ${name} ==\\n([\\s\\S]*?)(?=\\n== |$)`, 'i'))?.[1] || '';
     const features = section('Features and programs').match(/Major features[^.]*\./i)?.[0] || null;
     const visit = text.match(/[^.\n]*(?:public tour|guided tour|free tour)[^.\n]*\./i)?.[0]?.trim() || null;
-    const season = section('Flora').match(/[^.\n]*(?:seasons|spring|summer|fall|autumn|winter|bloom|blossom)[^.\n]*\./i)?.[0]?.trim() || null;
-    return { intro: intro.slice(0, 600), features: features?.slice(0, 400) || null,
+    // An unrelated plant's biology is not advice about when to visit this destination.
+    const named = String(title || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const seasonal = /\b(?:spring|summer|fall|autumn|winter|bloom(?:ing|s)?|foliage|season(?:al|s)?|January|February|March|April|May|June|July|August|September|October|November|December)\b/i;
+    const season = text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim())
+        .find((s) => seasonal.test(s) && new RegExp(`\\b${named}\\b`, 'i').test(s)) || null;
+    return { intro: intro.slice(0, 600), why, features: features?.slice(0, 400) || null,
         visit: visit?.slice(0, 400) || null, season: season?.slice(0, 400) || null,
         url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(title).replace(/ /g, '_'))}` };
 }
 
 function createWikidata({ config, fetchImpl, pace, log = console }) {
     const opts = { fetchImpl, pace, timeoutMs: config.upstreams.timeoutMs, userAgent: config.openData.userAgent, label: 'Wikidata' };
+
+    async function notablePlaces(cityQid) {
+        if (!/^Q[1-9][0-9]{0,11}$/.test(String(cityQid || ''))) return [];
+        // WDQS times out joining P131+ to P279* on a large city. Its P31 English labels are bounded after the
+        // administrative-chain match; two rows for one item are collapsed below before the top 60 are kept.
+        const query = `SELECT DISTINCT ?item ?label ?coordinate ?links ?instanceLabel WHERE {
+          ?item wdt:P131+ wd:${cityQid}; wdt:P625 ?coordinate; wdt:P31 ?kind; wikibase:sitelinks ?links; rdfs:label ?label.
+          ?kind rdfs:label ?instanceLabel.
+          FILTER(LANG(?label) = "en" && LANG(?instanceLabel) = "en" &&
+            REGEX(?instanceLabel, "museum|park|garden|landmark|viewpoint|zoo|aquarium|observation tower|monument|tourist attraction|art gallery|historic site", "i"))
+        } ORDER BY DESC(?links) LIMIT 120`;
+        const url = `${config.upstreams.wikidataQuery}?${new URLSearchParams({ query, format: 'json' })}`;
+        const { json, fetchedAt } = await fetchJson(url, { ...opts, label: 'Wikidata Query Service', retries: 0 });
+        const seen = new Set();
+        return (json?.results?.bindings || []).map((b) => {
+            const qid = String(b.item?.value || '').match(/\/Q[1-9][0-9]{0,11}$/)?.[0]?.slice(1);
+            const coord = String(b.coordinate?.value || '').match(/^Point\((-?[\d.]+) (-?[\d.]+)\)$/);
+            const name = b.label?.value || '';
+            if (!qid || seen.has(qid) || !coord || !isPlace(name, { instanceLabel: b.instanceLabel?.value })) return null;
+            seen.add(qid);
+            return { qid, name, lon: Number(coord[1]), lat: Number(coord[2]), sitelinks: Number(b.links?.value || b.sitelinks?.value || 0),
+                sourceUrl: `https://www.wikidata.org/wiki/${qid}`, fetchedAt };
+        }).filter(Boolean).slice(0, 60);
+    }
 
     /** Wikipedia titles → Q ids. Returns a Map keyed by the requested title (redirects resolved). */
     async function resolveQids(titles) {
@@ -197,7 +229,7 @@ function createWikidata({ config, fetchImpl, pace, log = console }) {
         return ((json && json.query && json.query.categorymembers) || []).map((r) => r.title).filter((t) => /^File:/i.test(t));
     }
 
-    return { resolveQids, entities, countryInfo, imageInfo, categoryFiles, article, parseEntity };
+    return { resolveQids, entities, countryInfo, imageInfo, categoryFiles, article, notablePlaces, parseEntity };
 }
 
 module.exports = { createWikidata, parseEntity, extractGuide, claimValues, firstClaim, chunk, SourceError, reusableImage };

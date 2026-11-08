@@ -18,7 +18,11 @@ const { extractGuide, parseEntity } = require('../server/sources/wikidata');
         const guide = extractGuide('Kubota Garden is a public Japanese garden in Seattle.\n== Features and programs ==\nMajor features include the Bamboo Grove and Necklace of Ponds. A public tour runs in summer.\n== Flora ==\nJapanese maples change colour in the fall.', 'Kubota Garden');
         assert.match(guide.features, /Bamboo Grove/);
         assert.match(guide.visit, /public tour/);
-        assert.match(guide.season, /fall/);
+        assert.strictEqual(guide.season, null, 'a maple species description is not a best-time recommendation');
+        assert.strictEqual(extractGuide('Kubota Garden is a public Japanese garden in Seattle. Visitors cross its bridge. Kubota Garden blooms in spring.', 'Kubota Garden').season,
+            'Kubota Garden blooms in spring.');
+        assert.strictEqual(extractGuide('Kubota Garden is a public Japanese garden in Seattle. Visitors cross its bridge.', 'Kubota Garden').why,
+            'Visitors cross its bridge.');
         assert.strictEqual(parseEntity({ id: 'Q1', claims: { P373: [{ mainsnak: { datavalue: { value: 'Kubota Garden' } } }] } }).commonsCategory, 'Category:Kubota Garden');
     });
     await check('only canonical Tours place links attach Live streams and clips', async () => {

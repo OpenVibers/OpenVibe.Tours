@@ -170,7 +170,7 @@ function coordFrom(params) {
 }
 
 /** Every {{see}} (and old {{listing|type=see}}) on a page, with coordinates when the listing has them. */
-function seeListings(wikitext) {
+function seeListings(wikitext, types = ['see']) {
     const text = String(wikitext || '');
     const out = [];
     const titles = new Set();
@@ -180,8 +180,8 @@ function seeListings(wikitext) {
         if (end < 0) break;
         const body = text.slice(i + 2, end - 2);
         const head = (body.split('|')[0] || '').trim().toLowerCase().replace(/^subst:/, '');
-        const isSee = head === 'see';
-        const isListing = head === 'listing' && /(?:^|\|)\s*type\s*=\s*see\b/i.test(body);
+        const isSee = types.includes(head);
+        const isListing = head === 'listing' && types.some((type) => new RegExp(`(?:^|\\|)\\s*type\\s*=\\s*${type}\\b`, 'i').test(body));
         if (!isSee && !isListing) { i = end - 1; continue; }
         const p = paramsOf(body);
         const name = stripWiki(p.name || p.title || '', { max: 200 });
@@ -233,6 +233,7 @@ function parseCityPage(wikitext, title, { districts = 2 } = {}) {
     return {
         summary: leadSummary(wikitext),
         see: seeListings(wikitext),
+        do: seeListings(wikitext, ['do']),
         districts: districtLinks(wikitext, title, districts),
     };
 }

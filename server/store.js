@@ -66,9 +66,10 @@ function wirePlace(row) {
         wikipedia: row.wikipedia || null, image_url: row.image_url || null, image_credit: row.image_credit || null,
         image_license: row.image_license || null, image_license_url: row.image_license_url || null,
         image_source_url: row.image_source_url || null, gallery: typeof row.gallery === 'string' ? JSON.parse(row.gallery) : (row.gallery || []), description: row.description || null,
-        guide_features: row.guide_features || null, guide_visit: row.guide_visit || null, guide_season: row.guide_season || null,
+        guide_why: row.guide_why || null, guide_features: row.guide_features || null, guide_visit: row.guide_visit || null,
+        guide_season: row.guide_season && String(row.guide_season).toLowerCase().includes(String(row.name).toLowerCase()) ? row.guide_season : null,
         source: row.source, source_url: row.source_url, fetched_at: iso(row.fetched_at),
-        osm_url: row.osm_type === 'wikivoyage' ? null : `https://www.openstreetmap.org/${row.osm_type}/${row.osm_id}`,
+        osm_url: ['wikivoyage', 'wikidata'].includes(row.osm_type) ? null : `https://www.openstreetmap.org/${row.osm_type}/${row.osm_id}`,
         map_url: `https://www.openstreetmap.org/?mlat=${row.lat}&mlon=${row.lon}#map=16/${row.lat}/${row.lon}`,
     };
 }
@@ -183,7 +184,8 @@ function createStore(s, { config = {}, sharing = null } = {}) {
             WHERE p.city_id = $1
             -- The places a visitor can use first: a picture, a description, a name they can read; then by kind and name
             -- (by kind alone, Chongqing's list opened on an artwork with a Chinese-only name, 2026-11-02).
-            ORDER BY p.rank_score DESC, (p.image_url IS NOT NULL) DESC, (p.description IS NOT NULL) DESC,
+            ORDER BY (p.image_url IS NOT NULL AND p.image_credit IS NOT NULL AND p.image_license IS NOT NULL AND p.image_source_url IS NOT NULL) DESC,
+                     p.rank_score DESC, (p.description IS NOT NULL) DESC,
                      (p.name_en IS NOT NULL OR p.name ~ '[A-Za-z]') DESC, p.kind, p.name LIMIT $2`, [String(cityId), Math.min(200, Math.max(1, int(limit, 60)))]);
         return rows.map(wirePlace);
     }
@@ -233,9 +235,10 @@ function createStore(s, { config = {}, sharing = null } = {}) {
 
     async function updatePlaceGuide(id, guide) {
         await db.exec(`UPDATE tours_places SET description=$2, guide_features=$3, guide_visit=$4, guide_season=$5,
-            source='wikipedia', source_url=$6, updated_at=now() WHERE id=$1`,
+            source='wikipedia', source_url=$6, guide_why=$7, updated_at=now() WHERE id=$1`,
         [String(id), clean(guide.intro, 600), guide.features ? clean(guide.features, 400) : null,
-            guide.visit ? clean(guide.visit, 400) : null, guide.season ? clean(guide.season, 400) : null, guide.url]);
+            guide.visit ? clean(guide.visit, 400) : null, guide.season ? clean(guide.season, 400) : null, guide.url,
+            guide.why ? clean(guide.why, 600) : null]);
         return placeById(id);
     }
 
@@ -380,15 +383,15 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         const id = stableId('plc', `${p.osmType}:${p.osmId}`);
         await db.exec(`INSERT INTO tours_places
             (id, city_id, osm_type, osm_id, name, kind, lat, lon, address, website, opening_hours, wheelchair, fee,
-             wikidata_id, wikipedia, image_url, image_credit, image_license, description, source, source_url, fetched_at, name_en, updated_at, image_license_url, image_source_url, gallery, rank_score)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,now(),$24,$25,$26::jsonb,$27)
+             wikidata_id, wikipedia, image_url, image_credit, image_license, description, source, source_url, fetched_at, name_en, updated_at, image_license_url, image_source_url, gallery, rank_score, guide_why)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,now(),$24,$25,$26::jsonb,$27,$28)
             ON CONFLICT (osm_type, osm_id) DO UPDATE SET
               city_id = EXCLUDED.city_id, name = EXCLUDED.name, name_en = EXCLUDED.name_en, kind = EXCLUDED.kind, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
               address = EXCLUDED.address, website = EXCLUDED.website, opening_hours = EXCLUDED.opening_hours,
               wheelchair = EXCLUDED.wheelchair, fee = EXCLUDED.fee, wikidata_id = EXCLUDED.wikidata_id, wikipedia = EXCLUDED.wikipedia,
               image_url = EXCLUDED.image_url, image_credit = EXCLUDED.image_credit, image_license = EXCLUDED.image_license,
               image_license_url = EXCLUDED.image_license_url, image_source_url = EXCLUDED.image_source_url, gallery = EXCLUDED.gallery, rank_score = EXCLUDED.rank_score,
-              description = EXCLUDED.description, source = EXCLUDED.source, source_url = EXCLUDED.source_url,
+              description = EXCLUDED.description, guide_why = COALESCE(EXCLUDED.guide_why, tours_places.guide_why), source = EXCLUDED.source, source_url = EXCLUDED.source_url,
               fetched_at = EXCLUDED.fetched_at, updated_at = now()`,
         [id, p.cityId, p.osmType, String(p.osmId), clean(p.name, 200), p.kind, Number(p.lat), Number(p.lon),
             p.address ? clean(p.address, 250) : null, p.website || null, p.openingHours ? clean(p.openingHours, 200) : null,
@@ -396,7 +399,8 @@ function createStore(s, { config = {}, sharing = null } = {}) {
             p.imageCredit ? clean(p.imageCredit, 250) : null, p.imageLicense ? clean(p.imageLicense, 120) : null,
             p.description ? clean(p.description, 800) : null, p.source || 'openstreetmap', p.sourceUrl,
             new Date(p.fetchedAt || s.now()).toISOString(), p.nameEn ? clean(p.nameEn, 200) : null,
-            p.imageLicenseUrl || null, p.imageSourceUrl || null, JSON.stringify(p.gallery || []), Math.max(0, int(p.rankScore))]);
+            p.imageLicenseUrl || null, p.imageSourceUrl || null, JSON.stringify(p.gallery || []), Math.max(0, int(p.rankScore)),
+            p.guideWhy ? clean(p.guideWhy, 600) : null]);
         indexNow.add(placePath({ id, name: p.name, name_en: p.nameEn }));
         return id;
     }

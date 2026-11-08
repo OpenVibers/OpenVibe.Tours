@@ -101,6 +101,10 @@ function createApi(ctx) {
             try { city = await discover.ensureCity(String(req.params.slug || '').replace(/-/g, ' ')); }
             catch (err) { ctx.log.warn(`[Tours city API lookup] ${err.message}`); }
         }
+        else if (city.place_count < 24) {
+            try { city = await discover.ensureCity(city.name); }
+            catch (err) { ctx.log.warn(`[Tours city API refresh] ${err.message}`); }
+        }
         if (!city) return problem(res, 404, 'tours.city_not_found', 'No such city.');
         const [places, routes, live, stays] = await Promise.all([
             store.cityPlaces(city.id, { limit: 100 }), store.cityRoutes(city.id), store.cityLive(city.id), store.cityStays(city.id),

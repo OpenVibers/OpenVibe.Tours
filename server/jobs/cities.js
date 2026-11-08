@@ -33,7 +33,7 @@ function fileTitle(name) {
 
 // A run under older rules is not fresh (jobs/index.js): credits-1 also cleans picture credits (and {{unesco}}, rail badges); inline-templates-2 kept
 // {{convert}}, the unit templates ({{km2}}), {{lang}} and the like in the summaries, so the first boot with it rewrites them.
-const CITIES_VERSION = 'credits-1';
+const CITIES_VERSION = 'district-see-do-2';
 
 function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
     const wikivoyage = createWikivoyage({ config, fetchImpl, pace: s.pace });
@@ -99,14 +99,14 @@ function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
             if (main) {
                 const parsed = parseCityPage(main.wikitext, main.title, { districts: config.openData.districtPages });
                 const pages = [{ title: main.title, wikitext: main.wikitext, sourceUrl: main.sourceUrl, fetchedAt: main.fetchedAt }];
-                let see = parsed.see.map((x) => ({ ...x, pageUrl: main.sourceUrl }));
-                if (see.filter((x) => x.hasCoords).length < 4) {
+                let see = [...parsed.see, ...parsed.do].map((x) => ({ ...x, pageUrl: main.sourceUrl }));
+                if (parsed.districts.length) {
                     for (const district of parsed.districts.slice(0, config.openData.districtPages)) {
                         try {
                             const sub = await wikivoyage.page(district);
                             if (!sub) continue;
                             const subParsed = parseCityPage(sub.wikitext, sub.title, { districts: 0 });
-                            see = see.concat(subParsed.see.map((x) => ({ ...x, pageUrl: sub.sourceUrl })));
+                            see = see.concat([...subParsed.see, ...subParsed.do].map((x) => ({ ...x, pageUrl: sub.sourceUrl })));
                             pages.push({ title: sub.title, wikitext: sub.wikitext, sourceUrl: sub.sourceUrl, fetchedAt: sub.fetchedAt });
                             result.districts += 1;
                         } catch (err) {

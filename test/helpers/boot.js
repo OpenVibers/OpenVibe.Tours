@@ -35,6 +35,7 @@ async function boot(opts = {}) {
         OV_LIVE_URL: upstreams.url, OV_RENT_URL: upstreams.url,
         OV_WIKIVOYAGE_URL: upstreams.url, OV_WIKIDATA_URL: upstreams.url, OV_WIKIPEDIA_URL: upstreams.url,
         OV_COMMONS_URL: upstreams.url, OV_OVERPASS_URL: `${upstreams.url}/interpreter`, OV_NOMINATIM_URL: upstreams.url,
+        OV_WIKIDATA_QUERY_URL: `${upstreams.url}/sparql`,
         TOURS_MIN_INTERVAL_MS: '0', TOURS_CITY_LIMIT: '3', TOURS_OSM_RADIUS_M: '3000',
         ...(opts.env || {}),
     };

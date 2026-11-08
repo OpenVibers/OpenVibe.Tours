@@ -92,6 +92,10 @@ function createPageRoutes(ctx) {
             try { city = await discover.ensureCity(String(req.params.slug || '').replace(/-/g, ' ')); }
             catch (err) { ctx.log.warn(`[Tours city lookup] ${err.message}`); }
         }
+        else if (city.place_count < 24) {
+            try { city = await discover.ensureCity(city.name); }
+            catch (err) { ctx.log.warn(`[Tours city refresh] ${err.message}`); }
+        }
         if (!city) return page(req, res, { index: false, title: 'Not found', body: raw(views.notFound()) }, 404);
         if (city.slug !== req.params.slug) return res.redirect(301, `/city/${encodeURIComponent(city.slug)}`);
         if (!city.osm_fetched_at && (!city.osm_attempted_at || Date.now() - new Date(city.osm_attempted_at).getTime() > 15 * 60_000)) {
@@ -123,7 +127,11 @@ function createPageRoutes(ctx) {
     });
 
     r.get('/city/:slug/free', async (req, res) => {
-        const city = await store.cityBySlug(String(req.params.slug || ''));
+        let city = await store.cityBySlug(String(req.params.slug || ''));
+        if (city && city.place_count < 24) {
+            try { city = await discover.ensureCity(city.name); }
+            catch (err) { ctx.log.warn(`[Tours city refresh] ${err.message}`); }
+        }
         if (!city) return page(req, res, { index: false, title: 'Not found', body: raw(views.notFound()) }, 404);
         const places = (await store.cityPlaces(city.id, { limit: 200 })).filter((p) => p.fee === 'no');
         return page(req, res, {

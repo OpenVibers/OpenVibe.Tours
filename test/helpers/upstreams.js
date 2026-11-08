@@ -147,6 +147,7 @@ async function startUpstreams() {
         if (state.down[url.pathname] || state.down.all) return json(503, { error: 'source down' });
 
         if (url.pathname === '/search') return json(200, state.nominatim[String(url.searchParams.get('q') || '').toLowerCase()] || []);
+        if (url.pathname === '/sparql') return json(200, { results: { bindings: state.notable || [] } });
 
         if (url.pathname === '/w/api.php') {
             const action = url.searchParams.get('action');
