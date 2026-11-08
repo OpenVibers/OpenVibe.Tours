@@ -86,21 +86,37 @@ function createPageRoutes(ctx) {
         });
     });
 
+    // A city's first visit gathers it from Nominatim, Wikidata, Wikivoyage (and its districts) and OpenStreetMap, with
+    // photos: more than a minute for a big city, past the proxy's timeout (Seattle answered 503, 11-08). The page waits
+    // at most CITY_WAIT_MS; the work goes on, and the page answers with what is there and refreshes itself.
+    const CITY_WAIT_MS = 20_000;
+    const soon = (promise, label) => {
+        const work = Promise.resolve(promise).catch((err) => { ctx.log.warn(`[Tours ${label}] ${err.message}`); return null; });
+        return Promise.race([work.then((value) => ({ done: true, value })), new Promise((ok) => setTimeout(() => ok({ done: false }), CITY_WAIT_MS).unref())]);
+    };
     r.get('/city/:slug', async (req, res) => {
         let city = await store.cityBySlug(String(req.params.slug || ''));
+        let gathering = false;
         if (!city) {
-            try { city = await discover.ensureCity(String(req.params.slug || '').replace(/-/g, ' ')); }
-            catch (err) { ctx.log.warn(`[Tours city lookup] ${err.message}`); }
-        }
-        else if (city.place_count < 24) {
-            try { city = await discover.ensureCity(city.name); }
-            catch (err) { ctx.log.warn(`[Tours city refresh] ${err.message}`); }
+            const name = String(req.params.slug || '').replace(/-/g, ' ');
+            const got = await soon(discover.ensureCity(name), 'city lookup');
+            if (!got.done) {
+                res.set('Refresh', '12');
+                return page(req, res, { index: false, title: `Gathering ${name}`, body: raw(views.gathering(name)) }, 200);
+            }
+            city = got.value;
+        } else if (city.place_count < 24) {
+            // More places are on their way; this visit shows what is stored now.
+            const got = await soon(discover.ensureCity(city.name), 'city refresh');
+            if (got.done && got.value) city = got.value; else gathering = !got.done;
         }
         if (!city) return page(req, res, { index: false, title: 'Not found', body: raw(views.notFound()) }, 404);
         if (city.slug !== req.params.slug) return res.redirect(301, `/city/${encodeURIComponent(city.slug)}`);
         if (!city.osm_fetched_at && (!city.osm_attempted_at || Date.now() - new Date(city.osm_attempted_at).getTime() > 15 * 60_000)) {
-            try { await jobs.places.populateCity(city); } catch (err) { ctx.log.warn(`[Tours city places] ${err.message}`); }
+            const got = await soon(jobs.places.populateCity(city), 'city places');
+            if (!got.done) gathering = true;
         }
+        if (gathering) res.set('Refresh', '15');
         const [places, routes, live, stays] = await Promise.all([
             store.cityPlaces(city.id, { limit: 60 }), store.cityRoutes(city.id), store.cityLive(city.id), store.cityStays(city.id),
         ]);

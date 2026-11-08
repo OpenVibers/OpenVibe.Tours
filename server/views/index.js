@@ -624,8 +624,15 @@ function developersPage({ jobs = [] } = {}) {
 </div>`;
 }
 
+/** A city still being gathered on its first visit (the page refreshes itself; Refresh header). */
+function gathering(name) {
+    return `<div class="tr-wrap tr-page-pad tr-narrow" id="tr-gathering"><p class="tr-kicker">First visit</p><h1>Gathering ${esc(name)}</h1>
+<p class="tr-lede">Its places are coming in from Wikivoyage, Wikidata and OpenStreetMap, with their photos and credits. This page reloads itself in a few seconds; the next visitor gets it at once.</p>
+<p><a class="tr-btn tr-btn-quiet" href="/cities">Other cities</a></p></div>`;
+}
+
 function notFound() {
     return `<div class="tr-wrap tr-narrow tr-page-pad" id="tr-not-found"><p class="tr-kicker">404</p><h1>Not here</h1><p class="tr-lede">That city, place, route or trip does not exist, or it is a private trip.</p><p><a class="tr-btn" href="/">Go home</a> <a class="tr-btn tr-btn-quiet" href="/cities">Browse cities</a></p></div>`;
 }
 
-module.exports = { placeName, localName, kindUnlessNamed, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, tripGate, developersPage, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };
+module.exports = { placeName, localName, kindUnlessNamed, HOME_FAQ, safeImage, home, citiesPage, cityPage, placePage, routePage, livePage, staysPage, flightsPage, signIn, tripNew, tripsPage, tripPage, tripGate, developersPage, gathering, notFound, placeOfDayCard, heroMotif, miniMap, SOURCE };

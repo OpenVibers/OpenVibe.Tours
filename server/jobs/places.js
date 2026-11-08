@@ -21,7 +21,7 @@ const { isPlace } = require('../places/is-place');
 
 // A run under older rules is not fresh (jobs/index.js): name-en-1 stored OpenStreetMap's English names; wv-text-1
 // rewrites the stored Wikivoyage places' text with the current parser.
-const PLACES_VERSION = 'notable-places-2';
+const PLACES_VERSION = 'notable-places-3-photo-pass';   // 11-08: the first boot runs the photo pass at once
 
 function commonsFile(value) {
     const raw = String(value || '').trim();
@@ -241,6 +241,19 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             } catch (err) {
                 result.errors.push(`wikivoyage ${city.slug}: ${err && err.message}`);
             }
+        }
+
+        // 1b. Places stored without a photo (a copy refused on 11-08, or a photo added to Commons since): a bounded
+        // batch per run, tried again after a week.
+        try {
+            const bare = await store.placesWithoutPhoto({ limit: 60 });
+            if (bare.length) {
+                const pictured = await photosFor(bare.map((r) => ({ id: r.id, wikidataId: r.wikidata_id, name: r.name })));
+                result.photos = 0;
+                for (const p of pictured) if (await store.setPlacePhoto(p.id, p)) result.photos += 1;
+            }
+        } catch (err) {
+            result.errors.push(`photos: ${err && err.message}`);
         }
 
         // 2. OpenStreetMap for the cities whose OSM data is oldest, bounded per run.
