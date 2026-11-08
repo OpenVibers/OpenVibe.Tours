@@ -234,7 +234,7 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
         room: 'tours',
         hero: {
             title: 'Go anywhere: fly, stay, walk, watch',
-            lede: 'Places from OpenStreetMap, notes from Wikivoyage, coordinates and pictures from Wikidata, IRL tours live on OpenVibe.Live, stays from OpenVibe.Rent, and a map for every walk. All open data, each with its source and fetch time.',
+            lede: 'Places, notes and pictures from open data, IRL tours live on OpenVibe.Live, stays from OpenVibe.Rent, and a map for every walk. Every fact names its source.',
             search: { action: '/cities', name: 'q', placeholder: 'A city: Lisbon, Tokyo, Mexico City…', hints: ['Lisbon', 'Tokyo', 'Mexico City', 'Barcelona'], label: 'Find a city' },
             chips: [{ label: 'Live tours', href: '/live' }, { label: 'Routes', href: '/routes' }, { label: 'Stays', href: '/stays' }, { label: 'Flights', href: '/flights' }],
             proof,
