@@ -231,6 +231,27 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         return { seeded, notable, osm: count };
     }
 
+    /**
+     * The photo pass (its own job, every few minutes): places stored without a photo (a copy refused, or a photo added to
+     * Commons since), the newest cities first, a bounded batch per run; a place with no photo is asked again after a
+     * week, one whose copy failed at the next run.
+     */
+    async function photoPass({ limit = 60 } = {}) {
+        const result = { photos: 0, photosDeferred: 0, noPhoto: 0, errors: [], version: PLACES_VERSION };
+        try {
+            const bare = await store.placesWithoutPhoto({ limit });
+            if (!bare.length) return result;
+            const pictured = await photosFor(bare.map((r) => ({ id: r.id, wikidataId: r.wikidata_id, name: r.name })));
+            for (const p of pictured) {
+                if (p.photoDeferred) { result.photosDeferred += 1; continue; }
+                if (await store.setPlacePhoto(p.id, p)) result.photos += 1; else result.noPhoto += 1;
+            }
+        } catch (err) {
+            result.errors.push(`photos: ${err && err.message}`);
+        }
+        return result;
+    }
+
     async function runOnce({ limit = config.openData.cityLimit, osmLimit = config.openData.osmCitiesPerRun } = {}) {
         const result = { cities: 0, wikivoyagePlaces: 0, places: 0, osmCities: 0, empty: [], errors: [], version: PLACES_VERSION };
 
@@ -243,22 +264,6 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             } catch (err) {
                 result.errors.push(`wikivoyage ${city.slug}: ${err && err.message}`);
             }
-        }
-
-        // 1b. Places stored without a photo (a copy refused on 11-08, or a photo added to Commons since): a bounded
-        // batch per run, tried again after a week.
-        try {
-            const bare = await store.placesWithoutPhoto({ limit: 60 });
-            if (bare.length) {
-                const pictured = await photosFor(bare.map((r) => ({ id: r.id, wikidataId: r.wikidata_id, name: r.name })));
-                result.photos = 0;
-                for (const p of pictured) {
-                    if (p.photoDeferred) { result.photosDeferred = (result.photosDeferred || 0) + 1; continue; }
-                    if (await store.setPlacePhoto(p.id, p)) result.photos += 1;
-                }
-            }
-        } catch (err) {
-            result.errors.push(`photos: ${err && err.message}`);
         }
 
         // 2. OpenStreetMap for the cities whose OSM data is oldest, bounded per run.
@@ -281,7 +286,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         return result;
     }
 
-    return { runOnce, seedWikivoyage, populateCity, photosFor, distanceM, version: PLACES_VERSION };
+    return { runOnce, photoPass, seedWikivoyage, populateCity, photosFor, distanceM, version: PLACES_VERSION };
 }
 
 module.exports = { createPlacesJob, distanceM, rankPlace };

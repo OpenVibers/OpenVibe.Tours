@@ -687,10 +687,11 @@ function createStore(s, { config = {}, sharing = null } = {}) {
 
     /** Places with a Wikidata item and no photo, not tried in the last week: the best ranked first. */
     async function placesWithoutPhoto({ limit = 60 } = {}) {
-        return db.many(`SELECT id, wikidata_id, name FROM tours_places
-            WHERE image_url IS NULL AND wikidata_id IS NOT NULL
-              AND (photo_tried_at IS NULL OR photo_tried_at < now() - interval '7 days')
-            ORDER BY rank_score DESC NULLS LAST, id LIMIT $1`, [Math.max(1, Math.min(200, Number(limit) || 60))]);
+        // The newest cities first (a city someone just looked up), then the best ranked places.
+        return db.many(`SELECT p.id, p.wikidata_id, p.name FROM tours_places p JOIN tours_cities c ON c.id = p.city_id
+            WHERE p.image_url IS NULL AND p.wikidata_id IS NOT NULL
+              AND (p.photo_tried_at IS NULL OR p.photo_tried_at < now() - interval '7 days')
+            ORDER BY c.created_at DESC, p.rank_score DESC NULLS LAST, p.id LIMIT $1`, [Math.max(1, Math.min(200, Number(limit) || 60))]);
     }
     /** A photo found for a stored place (credited), or only the time it was looked for. */
     async function setPlacePhoto(id, p) {
