@@ -301,60 +301,138 @@ ${cities.length ? `<ol class="tr-city-list">${cities.map((c) => `<li class="tr-c
 </div>`;
 }
 
+const OSM_DAY = { Mo: 'Mon', Tu: 'Tue', We: 'Wed', Th: 'Thu', Fr: 'Fri', Sa: 'Sat', Su: 'Sun', PH: 'holidays' };
+/** OpenStreetMap opening_hours in words for the common shapes ("Mo-Su 06:00-22:00" → "Every day 6:00–22:00"); any
+ *  other syntax is shown exactly as written, never guessed. */
+function hoursInWords(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (raw === '24/7') return 'Open 24 hours';
+    const day = '(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)';
+    const span = `${day}(?:-${day})?`;
+    const re = new RegExp(`^(${span}(?:,${span})*)\\s+(off|closed|\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2}(?:,\\d{1,2}:\\d{2}-\\d{1,2}:\\d{2})*)$`);
+    const parts = raw.split(/\s*;\s*/).filter(Boolean).map((part) => {
+        const m = part.match(re);
+        if (!m) return null;
+        const days = m[1] === 'Mo-Su' ? 'Every day' : m[1].replace(/Mo|Tu|We|Th|Fr|Sa|Su|PH/g, (d) => OSM_DAY[d]).replace(/-/g, '–').replace(/,/g, ', ');
+        const times = /^(off|closed)$/.test(m[2]) ? 'closed' : m[2].replace(/\b0(\d):/g, '$1:').replace(/-/g, '–').replace(/,/g, ', ');
+        return `${days} ${times}`;
+    });
+    return parts.length && parts.every(Boolean) ? parts.join(' · ') : raw;
+}
+/** "Nov 8, 2026" from a stored ISO time. */
+const updatedOn = (iso) => {
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '—';
+};
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'website'; } };
+const sourceName = (p) => (p.source === 'wikivoyage' ? 'Wikivoyage' : p.source === 'wikipedia' ? 'Wikipedia' : 'OpenStreetMap');
+/** A short credit for a photo inside a card: author, licence, source link (every image keeps all three). */
+const shortCredit = (p) => `<p class="tr-pcard-credit">Photo: ${esc(p.image_credit)} · ${esc(p.image_license)} · <a href="${esc(p.image_source_url)}" rel="noopener">source</a></p>`;
+
+/** One place in a city's grid: the photo (or its map pin when no licensed photo exists), name, kind and facts. */
+function placeTile(p) {
+    const photo = licensedPhoto(p);
+    const facts = [localName(p), kindUnlessNamed(p), p.address, p.wheelchair === 'yes' ? 'step-free' : '', p.fee === 'no' ? 'free to visit' : ''].filter(Boolean).join(' · ');
+    return `<li class="tr-pcard${photo ? '' : ' tr-pcard-text'}">
+${photo ? `<div class="tr-pcard-media">${pictureImg(p.image_url, { alt: placeName(p), width: 640, height: 480, sizes: '(max-width: 560px) 46vw, (max-width: 900px) 30vw, 280px' })}</div>` : ''}
+<div class="tr-pcard-body">${photo ? '' : '<svg class="tr-pcard-pin" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.6" fill="currentColor"/></svg>'}<h3><a href="${esc(placePath(p))}">${esc(placeName(p))}</a></h3>${facts ? `<p class="tr-pcard-meta">${esc(facts)}</p>` : ''}${p.fee === 'no' ? '<span class="tr-pill">Free</span>' : ''}</div>
+${photo ? shortCredit(p) : ''}
+</li>`;
+}
+
 function cityPage({ city, places = [], routes = [], live = [], stays = [], free = false } = {}) {
     const img = licensedPhoto(city);
+    // Photographed places first (rank order kept within each group): rows of the grid stay even.
+    places = [...places.filter((p) => licensedPhoto(p)), ...places.filter((p) => !licensedPhoto(p))];
+    const mapHref = `https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=12/${city.lat}/${city.lon}`;
     return `<div class="tr-wrap" id="tr-city-page">
-<header class="tr-page-h tr-city-head">
+<nav class="crumbs" aria-label="Breadcrumbs"><a href="/cities">Cities</a> / ${esc(city.name)}</nav>
+<header class="tr-city-hero${img ? '' : ' tr-city-hero-plain'}">
+${img ? `<figure class="tr-city-cover">${pictureImg(img, { alt: city.name, sizes: '(max-width: 720px) 100vw, 1180px', width: 1200, height: 560, widths: [640, 1200], eager: true })}<figcaption>Photo: ${esc(city.image_credit)} · ${esc(city.image_license)} · <a href="${esc(city.image_source_url)}" rel="noopener">source</a>${city.image_license_url ? ` · <a href="${esc(city.image_license_url)}" rel="noopener">licence</a>` : ''}</figcaption></figure>` : ''}
+<div class="tr-city-intro">
 <p class="tr-kicker">${esc(city.country)}${city.region ? ` · ${esc(city.region)}` : ''}</p>
 <h1>${free ? 'Free things to do' : 'Things to do'} in ${esc(city.name)}</h1>
 ${city.summary ? `<p class="tr-lede">${esc(city.summary)}</p>` : note('No Wikivoyage summary was fetched for this city yet.', 'warn')}
-<p><a href="/city/${esc(city.slug)}">All places</a> · <a href="/city/${esc(city.slug)}/free">Free things to do</a></p>
-<p class="tr-fine">${city.population ? `${Number(city.population).toLocaleString('en-US')} people · ` : ''}<a href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=11/${city.lat}/${city.lon}" rel="noopener">Map</a> · <a href="${esc(city.source_url)}" rel="noopener">${esc(city.source === 'wikivoyage' ? 'Wikivoyage' : 'Wikidata')}</a> · fetched ${when(city.fetched_at)}</p>
-${img ? `<figure class="tr-city-img">${pictureImg(img, { alt: city.name, sizes: '(max-width: 720px) 100vw, 1100px', width: 1100, height: 620, widths: [640, 1200] })}${credit(city)}</figure>` : ''}
+<p class="tr-fine">${city.population ? `${Number(city.population).toLocaleString('en-US')} people · ` : ''}<a href="${esc(mapHref)}" rel="noopener">Map</a> · <a href="${esc(city.source_url)}" rel="noopener">${esc(city.source === 'wikivoyage' ? 'Wikivoyage' : 'Wikidata')}</a> · fetched ${esc(updatedOn(city.fetched_at))}</p>
+</div>
 </header>
-${routes.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Self-guided routes</h2><span class="tr-muted">generated from Wikivoyage's See list</span></div><ol class="tr-route-list">${routes.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${Number(r.stop_count)} stops · ${km(r.distance_m)} · ${Number(r.duration_min)} min</span></a></li>`).join('')}</ol></section>` : ''}
-<section class="tr-sec" id="tr-city-places"><div class="tr-sec-head"><h2>${free ? 'Verified free places' : 'Places worth going'}</h2><a class="tr-more" href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=13/${city.lat}/${city.lon}" rel="noopener">OpenStreetMap</a></div>
+<nav class="tr-seg" aria-label="Which places">
+<a href="/city/${esc(city.slug)}"${free ? '' : ' aria-current="page"'}>All places</a>
+<a href="/city/${esc(city.slug)}/free"${free ? ' aria-current="page"' : ''}>Free things to do</a>
+</nav>
+<section class="tr-sec" id="tr-city-places"><div class="tr-sec-head"><h2>${free ? 'Verified free places' : 'Places worth going'}${places.length ? ` <span class="tr-count">${places.length}</span>` : ''}</h2><a class="tr-more" href="${esc(mapHref)}" rel="noopener">Open the map</a></div>
 ${free ? '<p class="tr-muted">Free means OpenStreetMap currently marks the place fee=no. Check the place’s own site before you go.</p>' : ''}
-${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row">${licensedPhoto(p) ? `<figure>${pictureImg(p.image_url, { alt: p.name, width: 330, height: 190 })}${credit(p)}</figure>` : ''}<a href="${esc(placePath(p))}"><strong>${esc(placeName(p))}</strong><span class="tr-muted">${esc([localName(p), kindUnlessNamed(p), p.address, p.wheelchair === 'yes' ? 'step-free' : '', p.fee === 'no' ? 'free to visit' : ''].filter(Boolean).join(' · '))}</span></a></li>`).join('')}</ol>` : empty(free ? 'No place has a confirmed free admission tag yet.' : 'No sourced place was stored for this city yet.', '/cities', 'Another city')}
+${places.length ? `<ol class="tr-pgrid">${places.slice(0, 24).map(placeTile).join('')}</ol>${places.length > 24 ? `<details class="tr-fold"><summary>More places (${places.length - 24})</summary><ol class="tr-pgrid">${places.slice(24).map(placeTile).join('')}</ol></details>` : ''}` : empty(free ? 'No place has a confirmed free admission tag yet.' : 'No sourced place was stored for this city yet.', '/cities', 'Another city')}
 <p class="tr-fine">${SOURCE.osm}</p></section>
-${live.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Live tours and recordings</h2><a class="tr-more" href="/live">All live</a></div><ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}${l.city_name ? ` · ${esc(l.city_name)}` : ''}${l.kind === 'stream' ? ` · ${Number(l.viewer_count)} watching` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Live's public stream list · fetched ${when(live[0].fetched_at)}</p></section>` : ''}
+${routes.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Self-guided routes</h2><span class="tr-muted">from Wikivoyage's See list</span></div><ol class="tr-route-list">${routes.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${Number(r.stop_count)} stops · ${km(r.distance_m)} · ${Number(r.duration_min)} min</span></a></li>`).join('')}</ol></section>` : ''}
+${live.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Live tours and recordings</h2><a class="tr-more" href="/live">All live</a></div><ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}${l.city_name ? ` · ${esc(l.city_name)}` : ''}${l.kind === 'stream' ? ` · ${Number(l.viewer_count)} watching` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Live's public stream list · fetched ${esc(updatedOn(live[0].fetched_at))}</p></section>` : ''}
 ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2><a class="tr-more" href="/stays">All stays</a></div><ol class="tr-stay-list">${stays.map((s0) => `<li><a href="${esc(s0.url)}" rel="noopener"><strong>${esc(s0.title)}</strong><span class="tr-muted">${esc(s0.kind)} · ${money(s0.price, s0.currency)} / ${esc(s0.period)}${s0.neighbourhood ? ` · ${esc(s0.neighbourhood)}` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Rent's public listings · never a payment on Tours.</p></section>` : ''}
-<section class="tr-sec"><div class="tr-sec-head"><h2>Plan a trip here</h2></div><p class="tr-muted">Sign in, pick dates, save places from this city and add a route and a stay.</p><p><a class="tr-btn" href="/trips/new?city=${encodeURIComponent(city.slug)}">Start a trip in ${esc(city.name)}</a> <a class="tr-btn tr-btn-quiet" href="/flights?to=${encodeURIComponent(city.name)}">Find a flight</a></p></section>
+<section class="tr-sec tr-band"><h2>Plan a trip here</h2><p class="tr-muted">Pick dates, save places from ${esc(city.name)} and add a route and a stay.</p><p class="tr-actions"><a class="tr-btn" href="/trips/new?city=${encodeURIComponent(city.slug)}">Start a trip in ${esc(city.name)}</a> <a class="tr-btn tr-btn-quiet" href="/flights?to=${encodeURIComponent(city.name)}">Find a flight</a></p></section>
 </div>`;
 }
 
 function placePage({ place, routeList = [], trips = [], nearby = [], live = [], summary = null } = {}) {
-    const seasonal = (place.description || '').split(/(?<=[.!?])\s+/).find((s) => /\b(spring|summer|autumn|fall|winter|bloom|blossom|season)\b/i.test(s));
+    const sentences = (place.description || '').split(/(?<=[.!?])\s+/).filter(Boolean);
+    const seasonal = sentences.find((s) => /\b(spring|summer|autumn|fall|winter|bloom|blossom|season)\b/i.test(s));
+    const guided = sentences.find((s) => /\b(guided tour|free tour)\b/i.test(s));
     const now = new Date();
     const springYear = now.getUTCMonth() < 2 || (now.getUTCMonth() === 2 && now.getUTCDate() < 21) ? now.getUTCFullYear() : now.getUTCFullYear() + 1;
     const springDate = `${springYear}-03-21`;
-    const guided = (place.description || '').split(/(?<=[.!?])\s+/).find((s) => /\b(guided tour|free tour)\b/i.test(s));
-    const planHref = `https://openvibe.fun/plans/new?${new URLSearchParams({ place: placeName(place), city: place.city_name, url: `https://openvibe.tours${placePath(place)}`, lat: String(place.lat), lon: String(place.lon) })}`;
-    const listHref = `https://openvibe.fun/places/new?${new URLSearchParams({ place: placeName(place), url: `https://openvibe.tours${placePath(place)}` })}`;
+    const name = placeName(place);
+    const lede = sentences[0] || `${name} in ${place.city_name}.`;
+    // Why go never repeats the lede: the AI summary when there is one, else the description after its first sentence.
+    const why = summary?.text || sentences.slice(1).join(' ');
+    const lookFor = place.guide_features && place.guide_features !== place.description ? place.guide_features : '';
+    const season = place.guide_season || seasonal || '';
+    const visit = place.guide_visit || guided || '';
+    const planHref = `https://openvibe.fun/plans/new?${new URLSearchParams({ place: name, city: place.city_name, url: `https://openvibe.tours${placePath(place)}`, lat: String(place.lat), lon: String(place.lon) })}`;
+    const listHref = `https://openvibe.fun/places/new?${new URLSearchParams({ place: name, url: `https://openvibe.tours${placePath(place)}` })}`;
+    const liveHref = `https://openvibe.live/broadcast?${new URLSearchParams({ place: name, place_url: `https://openvibe.tours${placePath(place)}`, title: `At ${name}` })}`;
+    const photos = [];
+    if (licensedPhoto(place)) photos.push({ url: place.image_url, credit: place.image_credit, license: place.image_license, sourceUrl: place.image_source_url, licenseUrl: place.image_license_url });
+    for (const photo of place.gallery || []) {
+        if (photos.length >= 6) break;
+        if (photos.some((x) => x.url === photo.url)) continue;
+        if (licensedPhoto({ image_url: photo.url, image_credit: photo.credit, image_license: photo.license, image_source_url: photo.sourceUrl })) photos.push(photo);
+    }
+    const figure = (photo, i) => `<figure class="${i ? 'tr-shot' : 'tr-hero-shot'}">${pictureImg(photo.url, i
+        ? { alt: `${name}, photo ${i + 1} of ${photos.length}`, sizes: '(max-width: 720px) 70vw, 280px', width: 440, height: 300 }
+        : { alt: name, sizes: '(max-width: 720px) 100vw, 760px', width: 1000, height: 620, widths: [640, 1000], eager: true })}<figcaption>Photo: ${esc(photo.credit)} · ${esc(photo.license)} · <a href="${esc(photo.sourceUrl)}" rel="noopener">source</a>${photo.licenseUrl ? ` · <a href="${esc(photo.licenseUrl)}" rel="noopener">licence</a>` : ''}</figcaption></figure>`;
+    const hours = hoursInWords(place.opening_hours);
+    const admission = place.fee === 'no' ? 'Free to visit' : place.fee === 'yes' ? 'Paid admission' : 'Admission not confirmed';
+    const reminder = `<form method="get" action="/remind-place/${esc(place.id)}" class="tr-form tr-form-inline tr-remind"><label class="tr-field"><span>Remind us on a date</span><input type="date" name="date" required></label><button class="tr-btn tr-btn-quiet" type="submit">Set reminder</button></form>`;
     return `<div class="tr-wrap" id="tr-place-page">
 <nav class="crumbs" aria-label="Breadcrumbs"><a href="/cities">Cities</a> / <a href="/city/${esc(place.city_slug)}">${esc(place.city_name)}</a></nav>
-<header class="tr-page-h"><p class="tr-kicker">${esc(String(place.kind || '').replace(/_/g, ' '))}</p><h1>${esc(placeName(place))}</h1>${localName(place) ? `\n<p class="tr-local-name">${esc(localName(place))}</p>` : ''}
-<p class="tr-lede">${esc(place.description || `${placeName(place)} in ${place.city_name}.`)}</p>
-<p class="tr-fine">${place.osm_url ? `<a href="${esc(place.osm_url)}" rel="noopener">OpenStreetMap ${esc(place.osm_type)} ${esc(place.osm_id)}</a> · ` : ''}<a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : place.source === 'wikipedia' ? 'Wikipedia' : 'source')}</a> · fetched ${when(place.fetched_at)}${place.wikidata_id ? ` · <a href="https://www.wikidata.org/wiki/${esc(place.wikidata_id)}" rel="noopener">Wikidata</a>` : ''}</p></header>
-${licensedPhoto(place) ? `<div class="tr-gallery"><figure class="tr-place-img">${pictureImg(place.image_url, { alt: placeName(place), sizes: '(max-width: 720px) 100vw, 900px', width: 900, height: 520, widths: [640, 1000] })}${credit(place)}</figure>${(place.gallery || []).filter((photo) => licensedPhoto({ image_url: photo.url, image_credit: photo.credit, image_license: photo.license, image_source_url: photo.sourceUrl })).slice(0, 2).map((photo) => `<figure class="tr-place-img">${pictureImg(photo.url, { alt: placeName(place), sizes: '(max-width: 720px) 100vw, 440px', width: 440, height: 280 })}${credit({ image_credit: photo.credit, image_license: photo.license, image_source_url: photo.sourceUrl, image_license_url: photo.licenseUrl })}</figure>`).join('')}</div>` : miniMap([place], `${placeName(place)} on the map`)}
-<section class="tr-sec"><h2>Why go</h2><p>${esc(summary?.text || place.description || `Visit ${placeName(place)} and explore its setting in ${place.city_name}.`)}</p><p class="tr-fine">${summary ? 'OpenVibe.AI summary · ' : ''}${place.description ? `Source: <a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : place.source === 'wikipedia' ? 'Wikipedia' : 'OpenStreetMap')}</a>` : 'Map location from OpenStreetMap.'}</p></section>
-${place.guide_features || place.description ? `<section class="tr-sec"><h2>Look for</h2><p>${esc(place.guide_features || place.description)}</p><p class="tr-fine"><a href="${esc(place.source_url)}" rel="noopener">Read the source description</a></p></section>` : ''}
-<section class="tr-sec"><h2>How to visit</h2><p>Check current access and hours before travelling. ${place.fee === 'no' ? 'OpenStreetMap marks admission as free.' : place.fee === 'yes' ? 'OpenStreetMap marks admission as paid.' : 'Admission has not been confirmed.'}</p>${place.guide_visit || guided ? `<p>${esc(place.guide_visit || guided)} <a href="${esc(place.source_url)}" rel="noopener">Source</a></p>` : ''}</section>
-${place.guide_season || seasonal ? `<section class="tr-sec"><h2>Best time</h2><p>${esc(place.guide_season || seasonal)}</p><p class="tr-fine"><a href="${esc(place.source_url)}" rel="noopener">Seasonal note source</a></p></section>` : ''}
-<dl class="tr-facts">
-${place.address ? `<div><dt>Address</dt><dd>${esc(place.address)}</dd></div>` : ''}
-${place.opening_hours ? `<div><dt>Opening hours</dt><dd>${esc(place.opening_hours)}</dd></div>` : ''}
-${place.wheelchair ? `<div><dt>Step-free</dt><dd>${esc(place.wheelchair)}</dd></div>` : ''}
-${place.fee ? `<div><dt>Fee</dt><dd>${esc(place.fee)}</dd></div>` : ''}
-<div><dt>Coordinates</dt><dd>${Number(place.lat).toFixed(5)}, ${Number(place.lon).toFixed(5)} · <a href="${esc(place.map_url)}" rel="noopener">map</a></dd></div>
-${safeHttp(place.website) ? `<div><dt>Website</dt><dd><a href="${esc(place.website)}" rel="nofollow noopener">${esc(place.website)}</a></dd></div>` : ''}
-</dl>
-<section class="tr-sec"><h2>Go here together</h2><p>Pick a date with your group, save this place, or set a reminder for another season.</p><p class="tr-actions"><a class="tr-btn" href="${esc(planHref)}">Make a plan together</a> <a class="tr-btn tr-btn-quiet" href="${esc(listHref)}">Add to Our places</a>${place.guide_season || seasonal ? ` <a class="tr-btn tr-btn-quiet" href="/remind-place/${esc(place.id)}?date=${springDate}">Remind us in spring</a>` : ''}</p><form method="get" action="/remind-place/${esc(place.id)}" class="tr-form tr-form-inline"><label class="tr-field"><span>Remind us on</span><input type="date" name="date" required></label><button class="tr-btn tr-btn-quiet" type="submit">Set reminder</button></form></section>
-<section class="tr-sec"><h2>See it live</h2>${live.length ? `<ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}</span></a></li>`).join('')}</ol>` : '<p class="tr-muted">No public streams or clips from this place yet.</p>'}<p><a class="tr-btn tr-btn-quiet" href="https://openvibe.live/broadcast?${new URLSearchParams({ place: placeName(place), place_url: `https://openvibe.tours${placePath(place)}`, title: `At ${placeName(place)}` })}">Stream it from here</a></p><p class="tr-fine">OpenVibe.Live opens its go-live setup; you choose when to start.</p></section>
-${nearby.length ? `<section class="tr-sec"><h2>Nearby places</h2><ol class="tr-place-list">${nearby.map((p) => `<li><a href="${esc(placePath(p))}">${esc(placeName(p))}</a></li>`).join('')}</ol></section>` : ''}
+<div class="tr-place-top${photos.length ? '' : ' tr-place-top-solo'}">
+<header class="tr-place-head">
+<p class="tr-kicker">${esc(String(place.kind || 'place').replace(/_/g, ' '))}${place.fee === 'no' ? ' <span class="tr-pill">Free</span>' : ''}</p>
+<h1>${esc(name)}</h1>${localName(place) ? `\n<p class="tr-local-name">${esc(localName(place))}</p>` : ''}
+<p class="tr-lede">${esc(lede)}</p>
+<div class="tr-together"><p class="tr-together-h">Go here together</p><p class="tr-actions"><a class="tr-btn" href="${esc(planHref)}">Make a plan together</a> <a class="tr-btn tr-btn-quiet" href="${esc(listHref)}">Add to Our places</a></p><p class="tr-fine">A date poll for your people, or a shared list of places you want to see.</p></div>
+</header>
+${photos.length ? `<div class="tr-place-media">${figure(photos[0], 0)}${photos.length > 1 ? `<div class="tr-rail-wrap"><p class="tr-rail-count">${photos.length - 1} more ${photos.length - 1 === 1 ? 'photo' : 'photos'}</p><ul class="tr-rail" aria-label="More photos of ${esc(name)}">${photos.slice(1).map((p, i) => `<li>${figure(p, i + 1)}</li>`).join('')}</ul></div>` : ''}</div>` : ''}
+<ul class="tr-quick" aria-label="At a glance">
+${place.fee === 'no' ? '<li><strong>Free to visit</strong><span>OpenStreetMap</span></li>' : ''}
+${hours ? `<li><strong>${esc(hours)}</strong><span>opening hours</span></li>` : ''}
+${place.wheelchair ? `<li><strong>${place.wheelchair === 'yes' ? 'Step-free' : place.wheelchair === 'limited' ? 'Partly step-free' : 'Not step-free'}</strong><span>access</span></li>` : ''}
+<li><a href="${esc(place.map_url)}" rel="noopener"><strong>Directions</strong><span>${place.address ? esc(place.address) : 'open the map'}</span></a></li>
+${safeHttp(place.website) ? `<li><a href="${esc(place.website)}" rel="nofollow noopener"><strong>Official site</strong><span>${esc(hostOf(place.website))}</span></a></li>` : ''}
+${place.fee === 'no' ? '' : `<li><strong>${esc(admission)}</strong><span>${place.fee ? 'OpenStreetMap' : 'check before you go'}</span></li>`}
+</ul>
+</div>
+<div class="tr-guide">
+${why ? `<section class="tr-sec"><h2>Why go</h2><p>${esc(why)}</p><p class="tr-fine">${summary ? 'A summary by OpenVibe.AI of the cited sources · ' : ''}Source: <a href="${esc(place.source_url)}" rel="noopener">${esc(sourceName(place))}</a></p></section>` : ''}
+${lookFor ? `<section class="tr-sec"><h2>Look for</h2><p>${esc(lookFor)}</p><p class="tr-fine">Source: <a href="${esc(place.source_url)}" rel="noopener">${esc(sourceName(place))}</a></p></section>` : ''}
+<section class="tr-sec"><h2>How to visit</h2><p>${esc(admission)}${place.fee ? ' (OpenStreetMap)' : ''}. Check the hours and access before you travel.</p>${visit ? `<p>${esc(visit)} <a href="${esc(place.source_url)}" rel="noopener">Source</a></p>` : ''}${place.address ? `<p class="tr-muted">${esc(place.address)}</p>` : ''}</section>
+${season ? `<section class="tr-sec tr-season"><h2>Best time</h2><p>${esc(season)}</p><p class="tr-fine"><a href="${esc(place.source_url)}" rel="noopener">Source</a></p><p class="tr-actions"><a class="tr-btn tr-btn-quiet" href="/remind-place/${esc(place.id)}?date=${springDate}">Remind us in spring</a></p>${reminder}</section>` : ''}
+</div>
+${season ? '' : `<section class="tr-sec"><h2>Come back later</h2><p class="tr-muted">Ask for a reminder on the day you want to go.</p>${reminder}</section>`}
+<section class="tr-sec"><div class="tr-sec-head"><h2>See it live</h2><a class="tr-btn tr-btn-quiet" href="${esc(liveHref)}">Stream it from here</a></div>${live.length ? `<ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}</span></a></li>`).join('')}</ol>` : '<p class="tr-muted">No public streams or clips from here yet. Stream it and you are the first: OpenVibe.Live opens its go-live setup, and you choose when to start.</p>'}</section>
+${nearby.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Nearby</h2></div><ol class="tr-pgrid tr-pgrid-small">${nearby.map(placeTile).join('')}</ol></section>` : ''}
 ${routeList.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>On these routes</h2></div><ol class="tr-route-list">${routeList.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${esc(r.city_name)} · ${Number(r.stop_count)} stops</span></a></li>`).join('')}</ol></section>` : ''}
 ${trips.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Save it to a trip</h2></div><form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trips[0].slug)}/places"><input type="hidden" name="place_id" value="${esc(place.id)}"><label class="tr-field"><span>Trip</span><select name="trip">${trips.map((t) => `<option value="${esc(t.slug)}">${esc(t.title)}</option>`).join('')}</select></label><label class="tr-field"><span>Note (optional)</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form></section>` : `<section class="tr-sec"><p class="tr-muted"><a href="/auth/login?next=${encodeURIComponent(placePath(place))}">Sign in</a> to save this place to a trip.</p></section>`}
-<p class="tr-fine">${SOURCE.osm}</p>
+<footer class="tr-sources"><h2>Sources</h2><p>${place.osm_url ? `<a href="${esc(place.osm_url)}" rel="noopener">OpenStreetMap</a> · ` : ''}<a href="${esc(place.source_url)}" rel="noopener">${esc(sourceName(place))}</a>${place.wikidata_id ? ` · <a href="https://www.wikidata.org/wiki/${esc(place.wikidata_id)}" rel="noopener">Wikidata</a>` : ''} · fetched ${esc(updatedOn(place.fetched_at))}</p><p>${SOURCE.osm}</p></footer>
 </div>`;
 }
 
