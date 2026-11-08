@@ -27,6 +27,7 @@ function load(env = process.env) {
         nodeEnv,
         isProduction,
         baseUrl,
+        indexNow: { key: String(env.INDEXNOW_KEY || '').trim() },
         trustProxy: env.TRUST_PROXY != null ? Number(env.TRUST_PROXY) : 2,
         drill: bool(env.TOURS_DRILL),
         limits: {
@@ -38,6 +39,8 @@ function load(env = process.env) {
         valkey: { url: env.VALKEY_URL || '', prefix: env.VALKEY_PREFIX || 'ov:tours:' },
 
         networkUrl,
+        media: { url: trim(env.OV_MEDIA_URL || 'https://openvibe.media'), scope: 'media.object.upload' },
+        ai: { url: trim(env.OV_AI_INTERNAL_URL || ''), scope: 'ai.run.create ai.run.read' },
         networkInternalUrl: trim(env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000'),
         networkIssuer: trim(env.OV_NETWORK_ISSUER || networkUrl),
         audience: env.TOURS_AUDIENCE || 'openvibe.tours',
@@ -70,7 +73,9 @@ function load(env = process.env) {
             wikidata: trim(env.OV_WIKIDATA_URL || 'https://www.wikidata.org'),
             wikipedia: trim(env.OV_WIKIPEDIA_URL || 'https://en.wikipedia.org'),
             commons: trim(env.OV_COMMONS_URL || 'https://commons.wikimedia.org'),
+            openverse: trim(env.OV_OPENVERSE_URL || 'https://api.openverse.org'),
             overpass: trim(env.OV_OVERPASS_URL || 'https://overpass-api.de/api/interpreter'),
+            nominatim: trim(env.OV_NOMINATIM_URL || 'https://nominatim.openstreetmap.org'),
             timeoutMs: Math.max(1000, int(env.TOURS_UPSTREAM_TIMEOUT_MS, 60_000)),
         },
 
@@ -80,7 +85,7 @@ function load(env = process.env) {
             email: String(env.TOURS_OSM_EMAIL || '').trim(),
             minIntervalMs: Math.max(0, int(env.TOURS_MIN_INTERVAL_MS, 1100)),
             retryAfterMs: Math.max(0, int(env.TOURS_RETRY_AFTER_MS, 120_000)),
-            radiusM: Math.min(10_000, Math.max(300, int(env.TOURS_OSM_RADIUS_M, 3500))),
+            radiusM: Math.min(25_000, Math.max(300, int(env.TOURS_OSM_RADIUS_M, 15_000))),
             maxPerCity: Math.min(200, Math.max(1, int(env.TOURS_OSM_MAX_PER_CITY, 80))),
             osmCitiesPerRun: Math.min(100, Math.max(0, int(env.TOURS_OSM_CITIES_PER_RUN, 10))),
             cityLimit: Math.min(200, Math.max(1, int(env.TOURS_CITY_LIMIT, 100))),

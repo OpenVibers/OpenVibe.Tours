@@ -89,7 +89,7 @@ function createSearchIndex({ config, s, log = console, outbox = null }) {
         owner: 'tours', db, outbox: out, baseUrl: config.baseUrl, now: s.now, log,
         types: {
             place: {
-                page: (row) => `/place/${row.id}`,
+                page: (row) => require('./store').placePath(row),
                 document: describePlace,
                 rows: page(`SELECT p.id, p.name, p.name_en, p.kind, p.description, p.address, p.fee, p.wheelchair, p.created_at, p.updated_at,
                                    c.name AS city_name, c.slug AS city_slug, c.country

@@ -7,11 +7,11 @@
 const { fetchText } = require('./http');
 
 // What a traveller means by "place". Lodging is Rent's; a hotel is not an attraction.
-const INTERESTING = new Set(['attraction', 'museum', 'viewpoint', 'artwork', 'gallery', 'zoo', 'theme_park', 'aquarium', 'information', 'picnic_site', 'botanical_garden']);
+const INTERESTING = new Set(['attraction', 'museum', 'viewpoint', 'artwork', 'gallery', 'zoo', 'theme_park', 'aquarium', 'information', 'picnic_site', 'botanical_garden', 'park', 'garden']);
 
 function overpassQuery(lat, lon, radiusM) {
-    const r = Math.max(100, Math.min(10_000, Math.round(Number(radiusM) || 3500)));
-    return `[out:json][timeout:25];nwr["tourism"](around:${r},${Number(lat)},${Number(lon)});out center tags 160;`;
+    const r = Math.max(100, Math.min(25_000, Math.round(Number(radiusM) || 15_000)));
+    return `[out:json][timeout:25];(nwr["tourism"](around:${r},${Number(lat)},${Number(lon)});nwr["leisure"~"^(park|garden)$"](around:${r},${Number(lat)},${Number(lon)}););out center tags 160;`;
 }
 
 function commonsImage(tag) {
@@ -30,7 +30,7 @@ function addressOf(tags) {
 
 function placeFromElement(el, cityId, fetchedAt) {
     const tags = el.tags || {};
-    const kind = String(tags.tourism || '').toLowerCase();
+    const kind = String(tags.tourism || tags.leisure || '').toLowerCase();
     if (!INTERESTING.has(kind) || !tags.name) return null;
     const lat = Number.isFinite(Number(el.lat)) ? Number(el.lat) : Number(el.center && el.center.lat);
     const lon = Number.isFinite(Number(el.lon)) ? Number(el.lon) : Number(el.center && el.center.lon);
@@ -53,8 +53,10 @@ function placeFromElement(el, cityId, fetchedAt) {
         fee: ['yes', 'no'].includes(tags.fee) ? tags.fee : null,
         wikidataId: /^Q[1-9][0-9]{0,11}$/.test(tags.wikidata || '') ? tags.wikidata : null,
         wikipedia: tags.wikipedia || null,
-        imageUrl: commonsImage(tags.image) || commonsImage(tags.wikimedia_commons),
-        imageCredit: 'OpenStreetMap contributor',
+        // OSM tags do not carry an image licence or author. The places job resolves these through Commons.
+        imageFile: tags.image || tags.wikimedia_commons || null,
+        imageUrl: null,
+        imageCredit: null,
         imageLicense: null,
         description: tags.description ? String(tags.description).slice(0, 800) : null,
         source: 'openstreetmap',

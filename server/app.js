@@ -34,6 +34,8 @@ const { assetVersion, send } = require('./render/layout');
 const { raw } = require('./render/html');
 const { createStore: dataStore } = require('./store');
 const { createJobs } = require('./jobs');
+const { createDiscover } = require('./places/discover');
+const { createNarrative } = require('./places/narrative');
 const { createSearchIndex } = require('./search-index');
 const accountDataLib = require('./identity/account-data');
 const { createNetworkSender } = require('openvibe-sdk/account-data');
@@ -57,6 +59,8 @@ async function createApp(opts = {}) {
     const sharing = opts.sharing || createSharing({ db: s.db, config, fetchImpl, log });
     const store = dataStore(s, { config, sharing });
     const jobs = createJobs({ config, s, store, fetchImpl, log });
+    const discover = createDiscover({ config, s, store, jobs, fetchImpl, log });
+    const narrative = createNarrative({ config, s, fetchImpl, log });
     // The places, cities and walks in OpenVibe.Search (started by server/index.js, never under TOURS_DRILL).
     const searchIndex = createSearchIndex({ config, s, log });
 
@@ -65,7 +69,7 @@ async function createApp(opts = {}) {
         ? createNetworkSender({ networkInternalUrl: config.networkInternalUrl, clientId: config.oauth.clientId, clientSecret: config.oauth.clientSecret, fetch: fetchImpl })
         : async () => { throw new Error('OV_OAUTH_CLIENT_SECRET is not set: Tours cannot answer account events'); });
 
-    const ctx = { config, s, keys, sso, principal, store, jobs, searchIndex, accountData, accountSend, sharing, log };
+    const ctx = { config, s, keys, sso, principal, store, jobs, discover, narrative, searchIndex, accountData, accountSend, sharing, log };
 
     const app = express();
     // /.well-known/agent.json (openvibe-shared/agent-layer, SEO-2): what this site serves, for agents.

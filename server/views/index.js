@@ -11,6 +11,7 @@ const { esc, raw } = require('../render/html');
 const sc = require('openvibe-shared/showcase');
 const kit = require('openvibe-shared/kit');
 const { stateLabel } = require('./labels');
+const { placePath } = require('../store');
 
 const SOURCE = {
     osm: '<a href="https://www.openstreetmap.org/copyright" rel="noopener">© OpenStreetMap contributors</a>, ODbL 1.0',
@@ -33,12 +34,14 @@ const safeImage = (v) => {
     try {
         const { protocol, hostname, pathname } = new URL(u);
         if (protocol !== 'https:' || !IMAGE_HOSTS.test(hostname)) return null;
-        return /wikimedia\.org$/i.test(hostname) || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
+        return /wikimedia\.org$/i.test(hostname) || (hostname === 'openvibe.media' && /^\/api\/v2\/tours\/objects\//.test(pathname))
+            || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
     } catch { return null; }
 };
-// Wikimedia answers a width through the Special:FilePath redirect (OSM/place pictures) or the
-// "<n>px-" segment of a thumb URL (Commons' iiurlwidth, city pictures). A stored original can be
-// turned into a thumb path. Any other picture is left as it is.
+const licensedPhoto = (p) => p && p.image_credit && p.image_license && p.image_source_url && safeImage(p.image_url);
+const credit = (p) => `<figcaption>Photo: ${esc(p.image_credit)} · ${esc(p.image_license)} · <a href="${esc(p.image_source_url)}" rel="noopener">source</a>${p.image_license_url ? ` · <a href="${esc(p.image_license_url)}" rel="noopener">licence</a>` : ''}</figcaption>`;
+// Wikimedia's imageinfo thumbnail URL is already a verified derivative. Only Special:FilePath
+// supports a requested width reliably; Media serves the cached production thumbnail directly.
 function imageWidth(u, w) {
     if (!u) return null;
     try {
@@ -48,16 +51,10 @@ function imageWidth(u, w) {
             return url.toString();
         }
         if (/(^|\.)wikimedia\.org$/i.test(url.hostname)) {
-            const thumb = url.pathname.match(/^(.*\/thumb\/.*\/)(\d+)px-([^/]+)$/);
-            if (thumb) {
-                url.pathname = `${thumb[1]}${w}px-${thumb[3]}`;
-                return url.toString();
-            }
-            const original = url.pathname.match(/^\/(wikipedia\/[^/]+)\/([0-9a-f])\/([0-9a-f]{2})\/([^/]+)$/i);
-            if (original) {
-                url.pathname = `/${original[1]}/thumb/${original[2]}/${original[3]}/${original[4]}/${w}px-${original[4]}`;
-                return url.toString();
-            }
+            // Commons only guarantees the exact thumbnail URL returned by imageinfo. Asking for a new width
+            // can answer 400 for a file whose derivatives have not been rendered yet.
+            // Commons returns an original URL when the requested thumbnail would enlarge a small image.
+            // Turning that original back into a 640px thumbnail makes Wikimedia answer 400.
         }
     } catch { /* not a URL: use it unchanged */ }
     return null;
@@ -105,7 +102,7 @@ const cityCard = (c) => card({
     href: `/city/${c.slug}`,
     title: c.name,
     type: 'map',
-    image: safeImage(c.image_url) || '',
+    image: licensedPhoto(c) || '',
     alt: c.image_credit ? `${c.name} (${c.image_credit})` : c.name,
     badge: c.country || '',
     who: c.country || '',
@@ -122,10 +119,10 @@ const localName = (p) => (p && p.name_en && p.name && p.name !== p.name_en ? p.n
 const kindUnlessNamed = (p) => { const k = String(p.kind || '').replace(/_/g, ' '); return k && !placeName(p).toLowerCase().endsWith(k.toLowerCase()) ? k : ''; };
 
 const placeCard = (p) => card({
-    href: `/place/${p.id}`,
+    href: placePath(p),
     title: placeName(p),
     type: 'map',
-    image: safeImage(p.image_url) || '',
+    image: licensedPhoto(p) || '',
     badge: p.kind ? p.kind.replace(/_/g, ' ') : '',
     who: p.city_name || '',
     peek: p.description ? String(p.description).slice(0, 120) : '',
@@ -175,8 +172,8 @@ const clip = (s, n) => { const t = String(s || '').trim(); if (t.length <= n) re
 function placeOfDayCard(p) {
     if (!p) return '';
     return `<article class="tr-pod" data-place="${esc(p.id)}">
-<a class="tr-pod-link" href="/place/${esc(p.id)}">
-${safeImage(p.image_url) ? pictureImg(p.image_url, { alt: placeName(p) }) : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
+<a class="tr-pod-link" href="${esc(placePath(p))}">
+${licensedPhoto(p) ? pictureImg(p.image_url, { alt: placeName(p) }) : '<span class="tr-pod-noimg" aria-hidden="true">◆</span>'}
 <span class="tr-pod-body"><span class="tr-kicker">Place of the day · ${esc(p.city_name || '')}</span><strong>${esc(placeName(p))}</strong>
 <span class="tr-muted">${esc(p.kind ? p.kind.replace(/_/g, ' ') : 'place')}${p.description ? ` · ${esc(clip(p.description, 150))}` : ''}</span></span>
 </a></article>`;
@@ -292,30 +289,33 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
 
 function citiesPage({ cities = [], q = '' } = {}) {
     return `<div class="tr-wrap" id="tr-cities-page">
-<header class="tr-page-h"><p class="tr-kicker">Cities</p><h1>The top 100, from open data</h1>
-<p class="tr-lede">Coordinates and population from Wikidata, the page and its See list from Wikivoyage, places from OpenStreetMap. A city page lists its places, routes, live tours and stays.</p>
+<header class="tr-page-h"><p class="tr-kicker">Explore</p><h1>Things to do anywhere</h1>
+<p class="tr-lede">Search for any city or place. Pages are built from OpenStreetMap, Wikivoyage and Wikidata when you need them.</p>
 <form class="tr-form tr-form-inline" method="get" action="/cities" role="search"><label class="tr-field"><span>Find a city</span><input type="search" name="q" value="${esc(q)}" maxlength="80" placeholder="Lisbon"></label><button class="tr-btn" type="submit">Search</button></form></header>
+<form class="tr-form tr-form-inline" method="get" action="/places" role="search"><label class="tr-field"><span>Find a place</span><input type="search" name="q" maxlength="120" placeholder="Kubota Garden"></label><button class="tr-btn" type="submit">Find place</button></form>
 ${cities.length ? `<ol class="tr-city-list">${cities.map((c) => `<li class="tr-city-row"><a href="/city/${esc(c.slug)}">
-<span class="tr-city-photo">${safeImage(c.image_url) ? pictureImg(c.image_url, { alt: '', sizes: '58px', width: 58, height: 44, widths: [160, 330] }) : '<span aria-hidden="true">◆</span>'}</span>
+<span class="tr-city-photo">${licensedPhoto(c) ? pictureImg(c.image_url, { alt: '', sizes: '58px', width: 58, height: 44, widths: [160, 330] }) : '<span aria-hidden="true">◆</span>'}</span>
 <span class="tr-city-text"><strong>${esc(c.name)}</strong><span class="tr-muted">${esc(c.country)}${c.population ? ` · ${Number(c.population).toLocaleString('en-US')} people` : ''}</span>
 <span class="tr-muted">${Number(c.place_count) || 0} places · ${Number(c.route_count) || 0} routes</span></span></a></li>`).join('')}</ol>` : empty('No city matched that search.', '/cities', 'See all cities')}
 <p class="tr-fine">${SOURCE.wikidata} · ${SOURCE.wikivoyage} · ${SOURCE.osm}</p>
 </div>`;
 }
 
-function cityPage({ city, places = [], routes = [], live = [], stays = [] } = {}) {
-    const img = safeImage(city.image_url);
+function cityPage({ city, places = [], routes = [], live = [], stays = [], free = false } = {}) {
+    const img = licensedPhoto(city);
     return `<div class="tr-wrap" id="tr-city-page">
 <header class="tr-page-h tr-city-head">
 <p class="tr-kicker">${esc(city.country)}${city.region ? ` · ${esc(city.region)}` : ''}</p>
-<h1>${esc(city.name)}</h1>
+<h1>${free ? 'Free things to do' : 'Things to do'} in ${esc(city.name)}</h1>
 ${city.summary ? `<p class="tr-lede">${esc(city.summary)}</p>` : note('No Wikivoyage summary was fetched for this city yet.', 'warn')}
+<p><a href="/city/${esc(city.slug)}">All places</a> · <a href="/city/${esc(city.slug)}/free">Free things to do</a></p>
 <p class="tr-fine">${city.population ? `${Number(city.population).toLocaleString('en-US')} people · ` : ''}<a href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=11/${city.lat}/${city.lon}" rel="noopener">Map</a> · <a href="${esc(city.source_url)}" rel="noopener">${esc(city.source === 'wikivoyage' ? 'Wikivoyage' : 'Wikidata')}</a> · fetched ${when(city.fetched_at)}</p>
-${img ? `<figure class="tr-city-img"><img src="${esc(img)}" alt="${esc(city.name)}" loading="lazy" decoding="async"><figcaption>${esc(city.image_credit || 'Wikimedia Commons')}${city.image_license ? ` · ${esc(city.image_license)}` : ''}${city.image_license_url ? ` · <a href="${esc(city.image_license_url)}" rel="noopener">licence</a>` : ''}</figcaption></figure>` : ''}
+${img ? `<figure class="tr-city-img">${pictureImg(img, { alt: city.name, sizes: '(max-width: 720px) 100vw, 1100px', width: 1100, height: 620, widths: [640, 1200] })}${credit(city)}</figure>` : ''}
 </header>
 ${routes.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Self-guided routes</h2><span class="tr-muted">generated from Wikivoyage's See list</span></div><ol class="tr-route-list">${routes.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${Number(r.stop_count)} stops · ${km(r.distance_m)} · ${Number(r.duration_min)} min</span></a></li>`).join('')}</ol></section>` : ''}
-<section class="tr-sec" id="tr-city-places"><div class="tr-sec-head"><h2>Places</h2><a class="tr-more" href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=13/${city.lat}/${city.lon}" rel="noopener">OpenStreetMap</a></div>
-${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row"><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong><span class="tr-muted">${esc([localName(p), kindUnlessNamed(p), p.address, p.wheelchair === 'yes' ? 'step-free' : '', p.fee === 'no' ? 'free to visit' : ''].filter(Boolean).join(' · '))}</span></a></li>`).join('')}</ol>` : empty('No OpenStreetMap place was stored for this city yet. The places job fills it.', '/cities', 'Another city')}
+<section class="tr-sec" id="tr-city-places"><div class="tr-sec-head"><h2>${free ? 'Verified free places' : 'Places worth going'}</h2><a class="tr-more" href="https://www.openstreetmap.org/?mlat=${city.lat}&mlon=${city.lon}#map=13/${city.lat}/${city.lon}" rel="noopener">OpenStreetMap</a></div>
+${free ? '<p class="tr-muted">Free means OpenStreetMap currently marks the place fee=no. Check the place’s own site before you go.</p>' : ''}
+${places.length ? `<ol class="tr-place-list">${places.map((p) => `<li class="tr-place-row">${licensedPhoto(p) ? `<figure>${pictureImg(p.image_url, { alt: p.name, width: 330, height: 190 })}${credit(p)}</figure>` : ''}<a href="${esc(placePath(p))}"><strong>${esc(placeName(p))}</strong><span class="tr-muted">${esc([localName(p), kindUnlessNamed(p), p.address, p.wheelchair === 'yes' ? 'step-free' : '', p.fee === 'no' ? 'free to visit' : ''].filter(Boolean).join(' · '))}</span></a></li>`).join('')}</ol>` : empty(free ? 'No place has a confirmed free admission tag yet.' : 'No sourced place was stored for this city yet.', '/cities', 'Another city')}
 <p class="tr-fine">${SOURCE.osm}</p></section>
 ${live.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Live tours and recordings</h2><a class="tr-more" href="/live">All live</a></div><ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}${l.city_name ? ` · ${esc(l.city_name)}` : ''}${l.kind === 'stream' ? ` · ${Number(l.viewer_count)} watching` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Live's public stream list · fetched ${when(live[0].fetched_at)}</p></section>` : ''}
 ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2><a class="tr-more" href="/stays">All stays</a></div><ol class="tr-stay-list">${stays.map((s0) => `<li><a href="${esc(s0.url)}" rel="noopener"><strong>${esc(s0.title)}</strong><span class="tr-muted">${esc(s0.kind)} · ${money(s0.price, s0.currency)} / ${esc(s0.period)}${s0.neighbourhood ? ` · ${esc(s0.neighbourhood)}` : ''}</span></a></li>`).join('')}</ol><p class="tr-fine">OpenVibe.Rent's public listings · never a payment on Tours.</p></section>` : ''}
@@ -323,13 +323,24 @@ ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2
 </div>`;
 }
 
-function placePage({ place, routeList = [], trips = [] } = {}) {
+function placePage({ place, routeList = [], trips = [], nearby = [], live = [], summary = null } = {}) {
+    const seasonal = (place.description || '').split(/(?<=[.!?])\s+/).find((s) => /\b(spring|summer|autumn|fall|winter|bloom|blossom|season)\b/i.test(s));
+    const now = new Date();
+    const springYear = now.getUTCMonth() < 2 || (now.getUTCMonth() === 2 && now.getUTCDate() < 21) ? now.getUTCFullYear() : now.getUTCFullYear() + 1;
+    const springDate = `${springYear}-03-21`;
+    const guided = (place.description || '').split(/(?<=[.!?])\s+/).find((s) => /\b(guided tour|free tour)\b/i.test(s));
+    const planHref = `https://openvibe.fun/plans/new?${new URLSearchParams({ place: placeName(place), city: place.city_name, url: `https://openvibe.tours${placePath(place)}`, lat: String(place.lat), lon: String(place.lon) })}`;
+    const listHref = `https://openvibe.fun/places/new?${new URLSearchParams({ place: placeName(place), url: `https://openvibe.tours${placePath(place)}` })}`;
     return `<div class="tr-wrap" id="tr-place-page">
 <nav class="crumbs" aria-label="Breadcrumbs"><a href="/cities">Cities</a> / <a href="/city/${esc(place.city_slug)}">${esc(place.city_name)}</a></nav>
 <header class="tr-page-h"><p class="tr-kicker">${esc(String(place.kind || '').replace(/_/g, ' '))}</p><h1>${esc(placeName(place))}</h1>${localName(place) ? `\n<p class="tr-local-name">${esc(localName(place))}</p>` : ''}
-<p class="tr-lede">${esc(place.description || `${placeName(place)} in ${place.city_name}, from OpenStreetMap.`)}</p>
-<p class="tr-fine">${place.osm_url ? `<a href="${esc(place.osm_url)}" rel="noopener">OpenStreetMap ${esc(place.osm_type)} ${esc(place.osm_id)}</a> · ` : ''}<a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : 'source')}</a> · fetched ${when(place.fetched_at)}${place.wikidata_id ? ` · <a href="https://www.wikidata.org/wiki/${esc(place.wikidata_id)}" rel="noopener">Wikidata</a>` : ''}</p></header>
-${safeImage(place.image_url) ? `<figure class="tr-place-img"><img src="${esc(place.image_url)}" alt="${esc(placeName(place))}" loading="lazy" decoding="async"><figcaption>${esc(place.image_credit || 'OpenStreetMap contributor')}${place.image_license ? ` · ${esc(place.image_license)}` : ''}</figcaption></figure>` : ''}
+<p class="tr-lede">${esc(place.description || `${placeName(place)} in ${place.city_name}.`)}</p>
+<p class="tr-fine">${place.osm_url ? `<a href="${esc(place.osm_url)}" rel="noopener">OpenStreetMap ${esc(place.osm_type)} ${esc(place.osm_id)}</a> · ` : ''}<a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : place.source === 'wikipedia' ? 'Wikipedia' : 'source')}</a> · fetched ${when(place.fetched_at)}${place.wikidata_id ? ` · <a href="https://www.wikidata.org/wiki/${esc(place.wikidata_id)}" rel="noopener">Wikidata</a>` : ''}</p></header>
+${licensedPhoto(place) ? `<div class="tr-gallery"><figure class="tr-place-img">${pictureImg(place.image_url, { alt: placeName(place), sizes: '(max-width: 720px) 100vw, 900px', width: 900, height: 520, widths: [640, 1000] })}${credit(place)}</figure>${(place.gallery || []).filter((photo) => licensedPhoto({ image_url: photo.url, image_credit: photo.credit, image_license: photo.license, image_source_url: photo.sourceUrl })).slice(0, 2).map((photo) => `<figure class="tr-place-img">${pictureImg(photo.url, { alt: placeName(place), sizes: '(max-width: 720px) 100vw, 440px', width: 440, height: 280 })}${credit({ image_credit: photo.credit, image_license: photo.license, image_source_url: photo.sourceUrl, image_license_url: photo.licenseUrl })}</figure>`).join('')}</div>` : miniMap([place], `${placeName(place)} on the map`)}
+<section class="tr-sec"><h2>Why go</h2><p>${esc(summary?.text || place.description || `Visit ${placeName(place)} and explore its setting in ${place.city_name}.`)}</p><p class="tr-fine">${summary ? 'OpenVibe.AI summary · ' : ''}${place.description ? `Source: <a href="${esc(place.source_url)}" rel="noopener">${esc(place.source === 'wikivoyage' ? 'Wikivoyage' : place.source === 'wikipedia' ? 'Wikipedia' : 'OpenStreetMap')}</a>` : 'Map location from OpenStreetMap.'}</p></section>
+${place.guide_features || place.description ? `<section class="tr-sec"><h2>Look for</h2><p>${esc(place.guide_features || place.description)}</p><p class="tr-fine"><a href="${esc(place.source_url)}" rel="noopener">Read the source description</a></p></section>` : ''}
+<section class="tr-sec"><h2>How to visit</h2><p>Check current access and hours before travelling. ${place.fee === 'no' ? 'OpenStreetMap marks admission as free.' : place.fee === 'yes' ? 'OpenStreetMap marks admission as paid.' : 'Admission has not been confirmed.'}</p>${place.guide_visit || guided ? `<p>${esc(place.guide_visit || guided)} <a href="${esc(place.source_url)}" rel="noopener">Source</a></p>` : ''}</section>
+${place.guide_season || seasonal ? `<section class="tr-sec"><h2>Best time</h2><p>${esc(place.guide_season || seasonal)}</p><p class="tr-fine"><a href="${esc(place.source_url)}" rel="noopener">Seasonal note source</a></p></section>` : ''}
 <dl class="tr-facts">
 ${place.address ? `<div><dt>Address</dt><dd>${esc(place.address)}</dd></div>` : ''}
 ${place.opening_hours ? `<div><dt>Opening hours</dt><dd>${esc(place.opening_hours)}</dd></div>` : ''}
@@ -338,8 +349,11 @@ ${place.fee ? `<div><dt>Fee</dt><dd>${esc(place.fee)}</dd></div>` : ''}
 <div><dt>Coordinates</dt><dd>${Number(place.lat).toFixed(5)}, ${Number(place.lon).toFixed(5)} · <a href="${esc(place.map_url)}" rel="noopener">map</a></dd></div>
 ${safeHttp(place.website) ? `<div><dt>Website</dt><dd><a href="${esc(place.website)}" rel="nofollow noopener">${esc(place.website)}</a></dd></div>` : ''}
 </dl>
+<section class="tr-sec"><h2>Go here together</h2><p>Pick a date with your group, save this place, or set a reminder for another season.</p><p class="tr-actions"><a class="tr-btn" href="${esc(planHref)}">Make a plan together</a> <a class="tr-btn tr-btn-quiet" href="${esc(listHref)}">Add to Our places</a>${place.guide_season || seasonal ? ` <a class="tr-btn tr-btn-quiet" href="/remind-place/${esc(place.id)}?date=${springDate}">Remind us in spring</a>` : ''}</p><form method="get" action="/remind-place/${esc(place.id)}" class="tr-form tr-form-inline"><label class="tr-field"><span>Remind us on</span><input type="date" name="date" required></label><button class="tr-btn tr-btn-quiet" type="submit">Set reminder</button></form></section>
+<section class="tr-sec"><h2>See it live</h2>${live.length ? `<ol class="tr-live-list">${live.map((l) => `<li><a href="${esc(l.url)}" rel="noopener"><strong>${esc(l.title)}</strong><span class="tr-muted">${esc(l.kind === 'stream' ? 'Live now' : l.kind === 'clip' ? 'Clip' : 'Recording')} · ${esc(l.display_name || l.username)}</span></a></li>`).join('')}</ol>` : '<p class="tr-muted">No public streams or clips from this place yet.</p>'}<p><a class="tr-btn tr-btn-quiet" href="https://openvibe.live/broadcast?${new URLSearchParams({ place: placeName(place), place_url: `https://openvibe.tours${placePath(place)}`, title: `At ${placeName(place)}` })}">Stream it from here</a></p><p class="tr-fine">OpenVibe.Live opens its go-live setup; you choose when to start.</p></section>
+${nearby.length ? `<section class="tr-sec"><h2>Nearby places</h2><ol class="tr-place-list">${nearby.map((p) => `<li><a href="${esc(placePath(p))}">${esc(placeName(p))}</a></li>`).join('')}</ol></section>` : ''}
 ${routeList.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>On these routes</h2></div><ol class="tr-route-list">${routeList.map((r) => `<li><a href="/routes/${esc(r.id)}"><strong>${esc(r.title)}</strong><span class="tr-muted">${esc(r.city_name)} · ${Number(r.stop_count)} stops</span></a></li>`).join('')}</ol></section>` : ''}
-${trips.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Save it to a trip</h2></div><form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trips[0].slug)}/places"><input type="hidden" name="place_id" value="${esc(place.id)}"><label class="tr-field"><span>Trip</span><select name="trip">${trips.map((t) => `<option value="${esc(t.slug)}">${esc(t.title)}</option>`).join('')}</select></label><label class="tr-field"><span>Note (optional)</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form></section>` : `<section class="tr-sec"><p class="tr-muted"><a href="/auth/login?next=${encodeURIComponent(`/place/${place.id}`)}">Sign in</a> to save this place to a trip.</p></section>`}
+${trips.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Save it to a trip</h2></div><form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trips[0].slug)}/places"><input type="hidden" name="place_id" value="${esc(place.id)}"><label class="tr-field"><span>Trip</span><select name="trip">${trips.map((t) => `<option value="${esc(t.slug)}">${esc(t.title)}</option>`).join('')}</select></label><label class="tr-field"><span>Note (optional)</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form></section>` : `<section class="tr-sec"><p class="tr-muted"><a href="/auth/login?next=${encodeURIComponent(placePath(place))}">Sign in</a> to save this place to a trip.</p></section>`}
 <p class="tr-fine">${SOURCE.osm}</p>
 </div>`;
 }
@@ -478,7 +492,7 @@ ${canEdit ? `<section class="tr-sec tr-card"><h2>Share and edit</h2><p class="tr
 <label class="tr-field"><span>Notes</span><textarea name="notes" rows="3" maxlength="2000">${esc(trip.notes || '')}</textarea></label>
 <button class="tr-btn" type="submit">Save the trip</button></form></details></section>` : ''}
 <section class="tr-sec"><div class="tr-sec-head"><h2>Saved places</h2>${canEdit ? '' : `<span class="tr-muted">${places.length} places</span>`}</div>
-${places.length ? `<ol class="tr-trip-places">${places.map((p) => `<li><span class="tr-stop-num" aria-hidden="true">${Number(p.position)}</span><div><a href="/place/${esc(p.id)}"><strong>${esc(placeName(p))}</strong></a><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(p.city_name)}${p.trip_note ? ` · ${esc(p.trip_note)}` : ''}</span>${canEdit ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/places/${esc(p.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</div></li>`).join('')}</ol>` : empty('No place saved yet. Open a city and a place, then save it here.', trip.city_slug ? `/city/${trip.city_slug}` : '/cities', 'Find places')}
+${places.length ? `<ol class="tr-trip-places">${places.map((p) => `<li><span class="tr-stop-num" aria-hidden="true">${Number(p.position)}</span><div><a href="${esc(placePath(p))}"><strong>${esc(placeName(p))}</strong></a><span class="tr-muted">${localName(p) ? `${esc(localName(p))} · ` : ''}${esc(p.city_name)}${p.trip_note ? ` · ${esc(p.trip_note)}` : ''}</span>${canEdit ? `<form class="tr-inline-form" method="post" action="/trips/${esc(trip.slug)}/places/${esc(p.id)}/remove"><button class="tr-link-btn" type="submit">Remove</button></form>` : ''}</div></li>`).join('')}</ol>` : empty('No place saved yet. Open a city and a place, then save it here.', trip.city_slug ? `/city/${trip.city_slug}` : '/cities', 'Find places')}
 ${canEdit ? `<form class="tr-form tr-form-inline" method="post" action="/trips/${esc(trip.slug)}/places"><label class="tr-field"><span>Place id</span><input name="place_id" required placeholder="plc_…" pattern="plc_[0-9A-HJKMNP-TV-Z]{26}"></label><label class="tr-field"><span>Note</span><input name="note" maxlength="500"></label><button class="tr-btn" type="submit">Save place</button></form><p class="tr-fine">The place id is on the place page. In the API: POST /api/v1/trips/${esc(trip.slug)}/places.</p>` : ''}
 </section>
 <section class="tr-sec"><div class="tr-sec-head"><h2>Route</h2>${canEdit ? `<a class="tr-more" href="${trip.city_slug ? `/city/${trip.city_slug}` : '/routes'}">Find a route</a>` : ''}</div>

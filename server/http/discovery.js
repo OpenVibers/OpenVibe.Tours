@@ -10,6 +10,8 @@ const path = require('path');
 const seo = require('openvibe-shared/seo');
 const cache = require('openvibe-shared/cache-policy');
 const { asyncRouter } = require('./router');
+const { placePath } = require('../store');
+const { createIndexNow } = require('../index-now');
 
 const SITE_NAME = 'OpenVibe.Tours';
 const DESCRIPTION = 'OpenVibe.Tours is go anywhere: fly, stay, walk, watch. Cities, places and self-guided routes from OpenStreetMap, Wikivoyage and Wikidata; IRL tours live on OpenVibe.Live; stays from OpenVibe.Rent; flights through the official airline-neutral search; and trips a person shares with the people going with them.';
@@ -50,6 +52,9 @@ function createDiscoveryRoutes(ctx) {
     const abs = (p) => `${site}${p}`;
     const TEXT = cache.htmlHeaders({ maxAge: 3600 });
     const pages = publicPages();
+
+    const indexNow = createIndexNow({ baseUrl: config.baseUrl, key: config.indexNow?.key });
+    if (indexNow.enabled) r.use(indexNow.keyFile);
 
     r.get('/robots.txt', (_req, res) => {
         res.type('text/plain').set('Cache-Control', TEXT).send(
@@ -104,7 +109,7 @@ function createDiscoveryRoutes(ctx) {
                 { title: 'Pages', pages: pages.map((p) => ({ url: p.path, title: p.title, text: p.text })) },
                 { title: 'Cities', pages: cities.map((c) => ({ url: `/city/${c.slug}`, title: c.name, text: [c.country, c.summary].filter(Boolean).join(' · ') })) },
                 { title: 'Routes', pages: routes.map((r0) => ({ url: `/routes/${r0.id}`, title: 'Self-guided route', text: 'Generated from a Wikivoyage See list.' })) },
-                { title: 'Places', pages: places.map((p) => ({ url: `/place/${p.id}`, title: 'Place', text: 'From OpenStreetMap, ODbL.' })) },
+                { title: 'Places', pages: places.map((p) => ({ url: placePath(p), title: p.name, text: 'From OpenStreetMap or Wikivoyage.' })) },
             ],
         }));
     });
@@ -117,8 +122,9 @@ function createDiscoveryRoutes(ctx) {
         const urls = [
             ...pages.map((e) => ({ loc: abs(e.path), ...(lastmod ? { lastmod } : {}), changefreq: e.changefreq, priority: e.priority })),
             ...cities.map((e) => ({ loc: abs(`/city/${e.slug}`), lastmod: dayOf(e.updated_at) || lastmod, changefreq: 'weekly', priority: 0.8 })),
+            ...cities.map((e) => ({ loc: abs(`/city/${e.slug}/free`), lastmod: dayOf(e.updated_at) || lastmod, changefreq: 'weekly', priority: 0.6 })),
             ...routes.map((e) => ({ loc: abs(`/routes/${e.id}`), lastmod: dayOf(e.updated_at) || lastmod, changefreq: 'weekly', priority: 0.6 })),
-            ...places.map((e) => ({ loc: abs(`/place/${e.id}`), lastmod: dayOf(e.updated_at) || lastmod, changefreq: 'monthly', priority: 0.4 })),
+            ...places.map((e) => ({ loc: abs(placePath(e)), lastmod: dayOf(e.updated_at) || lastmod, changefreq: 'monthly', priority: 0.4 })),
         ];
         res.type('application/xml').set('Cache-Control', TEXT).send(seo.sitemapXml(urls));
     });

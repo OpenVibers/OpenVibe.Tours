@@ -67,7 +67,7 @@ const { seed } = require('./helpers/seed');
             assert.match(r.text, /"@type":"TouristDestination"/);
             assert.match(r.text, /"@type":"TouristAttraction"/);
             assert.match(r.text, /"@type":"TouristTrip"/);
-            assert.match(r.text, /href="\/place\/plc_/);
+            assert.match(r.text, /href="\/place\/[a-z0-9-]+-plc_/);
             assert.match(r.text, /href="\/routes\/rte_/);
             assert.match(r.text, /A flat in Alfama/);
             assert.match(r.text, /IRL walk in Lisbon/);

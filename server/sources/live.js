@@ -30,6 +30,7 @@ function categoryOf(s) {
 }
 
 function isIrl(s) {
+    if (placeIdOf(s)) return true;
     const tags = parseTags(s.tags).map((t) => t.toLowerCase());
     if (tags.includes('irl') || tags.includes('travel')) return true;
     if (IRL_WORDS.test(String(s.title || ''))) return true;
@@ -37,6 +38,11 @@ function isIrl(s) {
     if (chosen != null) return IRL_CATEGORIES.has(String(chosen).toLowerCase());
     if (s && Object.prototype.hasOwnProperty.call(s, 'chosen_category')) return false;
     return IRL_CATEGORIES.has(String((s && s.category) || '').toLowerCase());
+}
+
+function placeIdOf(s) {
+    const url = String(s.place_url || '');
+    return url.match(/^https:\/\/openvibe\.tours\/place\/[a-z0-9-]+-(plc_[0-9A-HJKMNP-TV-Z]{26})$/)?.[1] || null;
 }
 
 function streamOf(s, { fetchedAt, liveUrl, videoBase }) {
@@ -58,6 +64,7 @@ function streamOf(s, { fetchedAt, liveUrl, videoBase }) {
         fetchedAt,
         tags: parseTags(s.tags),
         videoBase,
+        placeId: placeIdOf(s),
     };
 }
 
@@ -93,6 +100,7 @@ function clipOf(c, { fetchedAt, videoBase }) {
         endedAt: utc(c.created_at),
         fetchedAt,
         tags: [],
+        placeId: placeIdOf(c),
     };
 }
 
@@ -144,4 +152,4 @@ function createLive({ config, fetchImpl, pace }) {
     return { streams, recent, clips, isIrl, parseTags, categoryOf };
 }
 
-module.exports = { createLive, isIrl, streamOf, vodOf, clipOf, parseTags, utc, IRL_CATEGORIES };
+module.exports = { createLive, isIrl, streamOf, vodOf, clipOf, placeIdOf, parseTags, utc, IRL_CATEGORIES };

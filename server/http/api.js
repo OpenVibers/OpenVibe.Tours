@@ -31,7 +31,7 @@ const { sameOrigin } = require('./principal');
 const { document: openapi } = require('../openapi');
 
 function createApi(ctx) {
-    const { config, s, principal, store } = ctx;
+    const { config, s, principal, store, discover } = ctx;
     const r = asyncRouter();
 
     r.use(express.json({ limit: '64kb' }));
@@ -84,13 +84,23 @@ function createApi(ctx) {
         if (!Number.isFinite(limit) || limit < 1 || limit > 200) return invalid(res, 'limit must be from 1 to 200', 'limit');
         if (!Number.isFinite(offset) || offset < 0) return invalid(res, 'offset must be 0 or more', 'offset');
         const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 80) : null;
-        const cities = await store.listCities({ limit, offset, q });
+        let cities = await store.listCities({ limit, offset, q });
+        if (q && !cities.length && offset === 0) {
+            try {
+                await discover.ensureCity(q);
+                cities = await store.listCities({ limit, offset, q });
+            } catch (err) { ctx.log.warn(`[Tours city API lookup] ${err.message}`); }
+        }
         okPublic(res);
         return res.json({ count: cities.length, cities });
     });
 
     r.get('/cities/:slug', async (req, res) => {
-        const city = await store.cityBySlug(String(req.params.slug || ''));
+        let city = await store.cityBySlug(String(req.params.slug || ''));
+        if (!city) {
+            try { city = await discover.ensureCity(String(req.params.slug || '').replace(/-/g, ' ')); }
+            catch (err) { ctx.log.warn(`[Tours city API lookup] ${err.message}`); }
+        }
         if (!city) return problem(res, 404, 'tours.city_not_found', 'No such city.');
         const [places, routes, live, stays] = await Promise.all([
             store.cityPlaces(city.id, { limit: 100 }), store.cityRoutes(city.id), store.cityLive(city.id), store.cityStays(city.id),
@@ -99,8 +109,19 @@ function createApi(ctx) {
         return res.json({ city, places, routes, live, stays });
     });
 
+    r.get('/places', async (req, res) => {
+        const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
+        if (!q) return invalid(res, 'q is required', 'q');
+        let place = null;
+        try { place = await discover.ensurePlace(q); }
+        catch (err) { ctx.log.warn(`[Tours place API lookup] ${err.message}`); }
+        if (!place) return problem(res, 404, 'tours.place_not_found', 'No such place.');
+        okPublic(res);
+        return res.json({ place });
+    });
+
     r.get('/places/:id', async (req, res) => {
-        const place = await store.placeById(String(req.params.id || ''));
+        const place = await discover.enrichPlace(await store.placeById(String(req.params.id || '')));
         if (!place) return problem(res, 404, 'tours.place_not_found', 'No such place.');
         const routes = await store.routesForPlace(place.id);
         okPublic(res);

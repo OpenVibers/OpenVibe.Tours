@@ -11,12 +11,23 @@
  *      openstreetmap.org URL and the fetch time. A failure leaves the previous rows and the Wikivoyage fallback.
  */
 const { createOverpass } = require('../sources/osm');
+const { createWikidata } = require('../sources/wikidata');
+const { createPhotoCache } = require('../places/photo-cache');
+const { createOpenverse } = require('../sources/openverse');
+const { fetchJson } = require('../sources/http');
 const { parseCityPage } = require('../sources/wikivoyage');
 const { stableId } = require('../store');
 
 // A run under older rules is not fresh (jobs/index.js): name-en-1 stored OpenStreetMap's English names; wv-text-1
 // rewrites the stored Wikivoyage places' text with the current parser.
 const PLACES_VERSION = 'wv-text-1';
+
+function commonsFile(value) {
+    const raw = String(value || '').trim();
+    if (/^(?:File|Image):/i.test(raw)) return `File:${raw.replace(/^(?:File|Image):/i, '')}`;
+    if (/^https:\/\/commons\.wikimedia\.org\/wiki\/File:/i.test(raw)) return `File:${decodeURIComponent(raw.split('/wiki/File:')[1]).replace(/_/g, ' ')}`;
+    return null;
+}
 
 const R = 6_371_000;
 function distanceM(a, b) {
@@ -27,8 +38,83 @@ function distanceM(a, b) {
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+function rankPlace(place, entity, views = 0) {
+    return (place.source === 'wikivoyage' ? 300 : 0)
+        + Math.min(1000, Number(entity?.sitelinks || 0)) * 20
+        + Math.round(Math.log10(Math.max(0, views) + 1) * 1000)
+        + (place.imageUrl ? 500 : 0) + (place.description ? 200 : 0);
+}
+
 function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
     const osm = createOverpass({ config, fetchImpl, pace: s.pace });
+    const wikidata = createWikidata({ config, fetchImpl, pace: s.pace, log });
+    const photoCache = createPhotoCache({ config, s, fetchImpl, log });
+    const openverse = createOpenverse({ config, fetchImpl, pace: s.pace });
+
+    async function pageviewsFor(entities) {
+        const out = new Map();
+        if (config.drill) return out;
+        const ranked = [...entities.values()].filter((e) => e.wikipediaTitle)
+            .sort((a, b) => b.sitelinks - a.sitelinks).slice(0, 5);
+        const today = new Date();
+        const month = `${new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1)).toISOString().slice(0, 7).replace('-', '')}0100`;
+        for (const entity of ranked) {
+            const title = entity.wikipediaTitle;
+            const cached = await s.db.maybe(`SELECT views FROM tours_pageview_cache WHERE wikipedia_title=$1 AND fetched_at > now()-interval '7 days'`, [title]);
+            if (cached) { out.set(entity.qid, Number(cached.views)); continue; }
+            try {
+                const path = encodeURIComponent(title.replace(/ /g, '_'));
+                const { json } = await fetchJson(`https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/${path}/monthly/${month}/${month}`,
+                    { fetchImpl, pace: s.pace, userAgent: config.openData.userAgent, timeoutMs: 8000, retries: 0, label: 'Wikimedia pageviews' });
+                const views = Math.max(0, Number(json?.items?.[0]?.views) || 0);
+                out.set(entity.qid, views);
+                await s.db.exec(`INSERT INTO tours_pageview_cache(wikipedia_title, views) VALUES ($1,$2)
+                    ON CONFLICT(wikipedia_title) DO UPDATE SET views=EXCLUDED.views, fetched_at=now()`, [title, views]);
+            } catch { /* Sitelinks still provide a stable notability signal. */ }
+        }
+        return out;
+    }
+
+    async function photosFor(places) {
+        const qids = places.map((p) => p.wikidataId).filter(Boolean);
+        const entities = qids.length ? await wikidata.entities(qids) : new Map();
+        const pageviews = await pageviewsFor(entities);
+        const files = places.map((p) => {
+            const p18 = entities.get(p.wikidataId)?.image;
+            return commonsFile(p.imageFile) || (p18 ? commonsFile(p18) || `File:${p18}` : null);
+        });
+        const galleries = new Map();
+        for (let i = 0, searched = 0; i < places.length && searched < 5; i++) {
+            if (!/^Category:/i.test(String(places[i].imageFile || ''))) continue;
+            searched += 1;
+            try {
+                const found = (await wikidata.categoryFiles(places[i].imageFile)).slice(0, 3);
+                galleries.set(i, found);
+                if (!files[i]) files[i] = found[0] || null;
+            } catch { /* no verified photo */ }
+        }
+        const images = await wikidata.imageInfo([...files.filter(Boolean), ...[...galleries.values()].flat()]);
+        let fallbacks = 0;
+        return Promise.all(places.map(async (p, i) => {
+            let image = images.get(files[i]) || (galleries.get(i) || []).map((file) => images.get(file)).find(Boolean);
+            if (!image && !config.drill && fallbacks < 3) {
+                fallbacks += 1;
+                try { image = await openverse.image(p.name); } catch { /* no verified photo */ }
+            }
+            const cached = image ? await photoCache.cache(image) : null;
+            const gallery = [];
+            for (const file of galleries.get(i) || []) {
+                const candidate = images.get(file);
+                if (!candidate || candidate.sourceUrl === cached?.sourceUrl) continue;
+                const photo = await photoCache.cache(candidate);
+                if (photo) gallery.push({ url: photo.url, credit: photo.credit, license: photo.license,
+                    licenseUrl: photo.licenseUrl, sourceUrl: photo.sourceUrl });
+            }
+            const pictured = cached ? { ...p, imageUrl: cached.url, imageCredit: cached.credit,
+                imageLicense: cached.license, imageLicenseUrl: cached.licenseUrl, imageSourceUrl: cached.sourceUrl, gallery } : p;
+            return { ...pictured, rankScore: rankPlace(pictured, entities.get(p.wikidataId), pageviews.get(p.wikidataId) || 0) };
+        }));
+    }
 
     async function seedWikivoyage(city) {
         const source = await store.citySource(city.id);
@@ -45,6 +131,8 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         }
         const existing = await store.cityPlaces(city.id, { limit: 200 });
         let n = 0;
+        const prepared = await photosFor(listings.filter((x) => x.wikidata).map((x) => ({ wikidataId: x.wikidata })));
+        const photos = new Map(listings.filter((x) => x.wikidata).map((x, i) => [x.wikidata, prepared[i]]));
         for (const listing of listings) {
             if (!listing.hasCoords || !Number.isFinite(Number(listing.lat)) || !Number.isFinite(Number(listing.lon))) continue;
             const name = String(listing.name || '').trim();
@@ -69,12 +157,37 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
                 source: 'wikivoyage',
                 sourceUrl: listing.pageUrl || source.source_url,
                 fetchedAt: source.fetched_at,
+                ...photos.get(listing.wikidata),
             };
+            place.rankScore = (place.rankScore || 0) + 300;
             await store.upsertPlace(place);
             existing.push({ name, lat: place.lat, lon: place.lon, id: null });
             n += 1;
         }
         return n;
+    }
+
+    async function populateCity(city) {
+        const seeded = await seedWikivoyage(city);
+        if (city.osm_fetched_at && Date.now() - new Date(city.osm_fetched_at).getTime() < 7 * 86_400_000) return { seeded, osm: 0 };
+        await store.markCityOsmAttempted(city.id);
+        const { elements, fetchedAt } = await osm.tourism(city.lat, city.lon, config.openData.radiusM);
+        const existing = await store.cityPlaces(city.id, { limit: 200 });
+        const seen = new Set();
+        const candidates = elements.map((el) => osm.placeFromElement(el, city.id, fetchedAt)).filter(Boolean);
+        const photographed = await photosFor(candidates);
+        let count = 0;
+        for (const place of photographed.sort((a, b) => (b.rankScore || 0) - (a.rankScore || 0))) {
+            if (count >= config.openData.maxPerCity) break;
+            const key = `${place.osmType}:${place.osmId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            if (existing.some((p) => p.source === 'wikivoyage' && (p.name.toLowerCase() === place.name.toLowerCase() || distanceM(p, place) <= 120))) continue;
+            await store.upsertPlace(place);
+            count += 1;
+        }
+        await store.markCityOsmFetched(city.id);
+        return { seeded, osm: count };
     }
 
     async function runOnce({ limit = config.openData.cityLimit, osmLimit = config.openData.osmCitiesPerRun } = {}) {
@@ -97,22 +210,8 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         const osmCities = await store.citiesForOsm(want);
         for (const [i, city] of osmCities.entries()) {
             try {
-                const { elements, fetchedAt } = await osm.tourism(city.lat, city.lon, config.openData.radiusM);
-                const seen = new Set();
-                const existing = await store.cityPlaces(city.id, { limit: 200 });
-                let n = 0;
-                for (const el of elements) {
-                    if (n >= config.openData.maxPerCity) break;
-                    const place = osm.placeFromElement(el, city.id, fetchedAt);
-                    if (!place) continue;
-                    const key = `${place.osmType}:${place.osmId}`;
-                    if (seen.has(key)) continue;
-                    seen.add(key);
-                    if (existing.some((p) => p.source === 'wikivoyage' && (p.name.toLowerCase() === place.name.toLowerCase() || distanceM(p, place) <= 120))) continue;
-                    await store.upsertPlace(place);
-                    n += 1;
-                }
-                await store.markCityOsmFetched(city.id);
+                const filled = await populateCity(city);
+                const n = filled.osm;
                 result.places += n;
                 result.osmCities += 1;
                 if (!n) result.empty.push(city.slug);
@@ -125,7 +224,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
         return result;
     }
 
-    return { runOnce, seedWikivoyage, distanceM, version: PLACES_VERSION };
+    return { runOnce, seedWikivoyage, populateCity, photosFor, distanceM, version: PLACES_VERSION };
 }
 
-module.exports = { createPlacesJob, distanceM };
+module.exports = { createPlacesJob, distanceM, rankPlace };
