@@ -20,23 +20,29 @@ const objectsClient = { upload: async (bytes) => { uploaded.push(bytes.length); 
 (async () => {
     // 1. 960px is asked first and copied.
     let asked = [];
-    let cache = createPhotoCache({ config, s: { db }, objectsClient, log: { warn() {} }, fetchImpl: async (u) => { asked.push(u); return ok(); } });
+    let cache = createPhotoCache({ config, s: { db }, objectsClient, uploadGapMs: 0, log: { warn() {} }, fetchImpl: async (u) => { asked.push(u); return ok(); } });
     let out = await cache.cache(image);
     assert.ok(/\/960px-Kubota\.jpg$/.test(asked[0]), 'a standard Commons width first');
     assert.strictEqual(out.url, 'https://openvibe.media/api/v2/tours/objects/obj_1');
 
     // 2. 960 refused (a small original): the exact imageinfo URL is used.
     asked = [];
-    cache = createPhotoCache({ config, s: { db }, objectsClient, log: { warn() {} }, fetchImpl: async (u) => { asked.push(u); return /960px/.test(u) ? refused : ok(); } });
+    cache = createPhotoCache({ config, s: { db }, objectsClient, uploadGapMs: 0, log: { warn() {} }, fetchImpl: async (u) => { asked.push(u); return /960px/.test(u) ? refused : ok(); } });
     out = await cache.cache(image);
     assert.deepStrictEqual(asked.map((u) => u.replace(/.*\//, '')), ['960px-Kubota.jpg', '1280px-Kubota.jpg']);
     assert.ok(out && out.url.startsWith('https://openvibe.media/'), 'copied from the original URL');
 
     // 3. Both refused: null, and the log says why.
     const warned = [];
-    cache = createPhotoCache({ config, s: { db }, objectsClient, log: { warn: (m) => warned.push(m) }, fetchImpl: async () => refused });
+    cache = createPhotoCache({ config, s: { db }, objectsClient, uploadGapMs: 0, log: { warn: (m) => warned.push(m) }, fetchImpl: async () => refused });
     out = await cache.cache(image);
     assert.strictEqual(out, null);
     assert.ok(warned.some((m) => /answered 400/.test(m)), 'a refused photo is logged, not silent');
+    // 4. Uploads are paced: two copies are at least the gap apart.
+    const times = [];
+    const paced = createPhotoCache({ config, s: { db }, uploadGapMs: 150, log: { warn() {} }, fetchImpl: async () => ok(),
+        objectsClient: { upload: async () => { times.push(Date.now()); return { id: 'o', public_url: 'https://openvibe.media/api/v2/tours/objects/o' }; } } });
+    await Promise.all([paced.cache({ ...image, sourceUrl: image.sourceUrl + '1' }), paced.cache({ ...image, sourceUrl: image.sourceUrl + '2' })]);
+    assert.ok(times.length === 2 && times[1] - times[0] >= 140, 'one upload per gap');
     console.log('photo cache: 960px first, the imageinfo URL as fallback, refusals logged');
 })().catch((e) => { console.error(e); process.exitCode = 1; });

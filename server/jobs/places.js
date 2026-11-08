@@ -21,7 +21,7 @@ const { isPlace } = require('../places/is-place');
 
 // A run under older rules is not fresh (jobs/index.js): name-en-1 stored OpenStreetMap's English names; wv-text-1
 // rewrites the stored Wikivoyage places' text with the current parser.
-const PLACES_VERSION = 'notable-places-3-photo-pass';   // 11-08: the first boot runs the photo pass at once
+const PLACES_VERSION = 'notable-places-4-photo-pace';   // 11-08: the first boot retries the photos Media refused at once
 
 function commonsFile(value) {
     const raw = String(value || '').trim();
@@ -110,6 +110,8 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
                 try { image = await openverse.image(p.name); } catch { /* no verified photo */ }
             }
             const cached = image ? await photoCache.cache(image) : null;
+            // A photo exists but its copy failed (Media busy, a timeout): not "no photo", so it is tried again next run.
+            const deferred = !!image && !cached;
             const gallery = [];
             for (const file of galleries.get(i) || []) {
                 const candidate = images.get(file);
@@ -120,7 +122,7 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             }
             const pictured = cached ? { ...p, imageUrl: cached.url, imageCredit: cached.credit,
                 imageLicense: cached.license, imageLicenseUrl: cached.licenseUrl, imageSourceUrl: cached.sourceUrl, gallery } : p;
-            return { ...pictured, rankScore: Math.max(Number(p.rankScore) || 0,
+            return { ...pictured, ...(deferred ? { photoDeferred: true } : {}), rankScore: Math.max(Number(p.rankScore) || 0,
                 rankPlace(pictured, entities.get(p.wikidataId), pageviews.get(p.wikidataId) || 0)) };
         }));
     }
@@ -250,7 +252,10 @@ function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
             if (bare.length) {
                 const pictured = await photosFor(bare.map((r) => ({ id: r.id, wikidataId: r.wikidata_id, name: r.name })));
                 result.photos = 0;
-                for (const p of pictured) if (await store.setPlacePhoto(p.id, p)) result.photos += 1;
+                for (const p of pictured) {
+                    if (p.photoDeferred) { result.photosDeferred = (result.photosDeferred || 0) + 1; continue; }
+                    if (await store.setPlacePhoto(p.id, p)) result.photos += 1;
+                }
             }
         } catch (err) {
             result.errors.push(`photos: ${err && err.message}`);

@@ -2,8 +2,17 @@
 
 // A checked Commons image is copied once into Media as a public object. The file's Commons page,
 // author and licence stay on the place row; Media serves only the smaller image bytes.
-function createPhotoCache({ config, s, fetchImpl = globalThis.fetch, log = console, objectsClient = null }) {
+// Media takes at most 30 uploads a minute from one caller (media.object.upload); one every UPLOAD_GAP_MS stays under it.
+const UPLOAD_GAP_MS = 2_100;
+function createPhotoCache({ config, s, fetchImpl = globalThis.fetch, log = console, objectsClient = null, uploadGapMs = UPLOAD_GAP_MS }) {
     let objects = objectsClient;
+    let nextUploadAt = 0;
+    async function uploadSlot() {
+        const now = Date.now();
+        const at = Math.max(now, nextUploadAt);
+        nextUploadAt = at + uploadGapMs;
+        if (at > now) await new Promise((ok) => setTimeout(ok, at - now));
+    }
     function client() {
         if (!objects) {
             const { createServiceTokenClient } = require('openvibe-sdk/auth');
@@ -45,6 +54,7 @@ function createPhotoCache({ config, s, fetchImpl = globalThis.fetch, log = conso
             const bytes = Buffer.from(await res.arrayBuffer());
             if (bytes.length > 4_000_000) return null;
             const file = image.sourceUrl.split('/').pop().slice(0, 100) || 'place-photo.jpg';
+            await uploadSlot();
             const obj = await client().upload(bytes, { kind: 'file', visibility: 'public', mimeType: type, filename: file });
             const url = obj.public_url || obj.url;
             if (!url || !/^https:\/\/openvibe\.media\//.test(url)) { log.warn(`[Tours photos] Media answered no public openvibe.media URL for ${image.sourceUrl}`); return null; }
