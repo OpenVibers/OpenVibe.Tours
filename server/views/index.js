@@ -181,12 +181,12 @@ ${licensedPhoto(p) ? pictureImg(p.image_url, { alt: placeName(p) }) : '<span cla
 
 /** The home's questions: the accordion on the page and the FAQPage data (server/http/discovery.js) are this one list. */
 const HOME_FAQ = [
-    ['Where does the data come from?', 'OpenStreetMap (Overpass, tourism=*) under ODbL, Wikivoyage under CC BY-SA, Wikidata under CC0, OpenVibe.Live\'s public stream list and OpenVibe.Rent\'s public listings. Every city, place, route and source row shows its source and fetch time.'],
+    ['Where does the data come from?', 'Wikivoyage (CC BY-SA), Wikidata (CC0), Wikipedia (CC BY-SA) and OpenStreetMap (ODbL) for cities and places; photos from Wikimedia Commons and Openverse under CC BY, CC BY-SA, CC0 or public domain, each with its author and licence; OpenVibe.Live\'s public streams and OpenVibe.Rent\'s public listings. Every city, place, route and source row shows its source and fetch time.'],
     ['Are the routes real guided tours?', 'No. They are self-guided walks generated from Wikivoyage\'s See lists and marked as generated. Check opening hours and access before you go; the note at each stop is the Wikivoyage text, cited.'],
     ['Do you sell flights or stays?', 'No. There is no flight API key in v1: the flight form opens the official airline-neutral search with the city pair filled in, with no affiliate parameter. Stays link to the listing on OpenVibe.Rent; Tours never takes a payment.'],
     ['Is there audio on the stops?', 'Not yet. OpenVibe.AI has no speech-synthesis route today, so every stop says audio is off instead of shipping a broken player. The audio fields are in the schema for when an API exists.'],
     ['Who can see my trip?', 'Only you, until you share it. Everyone and Anyone with the link are readable by whoever has the address; Specific people is only the accounts you add, each Can view or Can edit; Only me is you. Your Share button changes one trip, and /trips sets what a new trip starts as. Delete it at any time; account deletion erases your trips.'],
-    ['Why is a city missing?', 'The v1 catalogue is the top 100 cities by population; every city is fetched from Wikidata and Wikivoyage. A failed source run leaves the previous data and says so in the job receipt rather than inventing a place.'],
+    ['Why is a city missing?', 'It is not missing: search it. Any city or town opens on demand from OpenStreetMap, Wikidata and Wikivoyage (the first visit takes a moment while its places are gathered). A failed source run leaves the previous data and says so in the job receipt rather than inventing a place.'],
 ];
 
 /** The walk scene: the first real route's own first stops, each linked from the route page. */
@@ -231,8 +231,8 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
         room: 'tours',
         hero: {
             title: 'Go anywhere: fly, stay, walk, watch',
-            lede: 'Places, notes and pictures from open data, IRL tours live on OpenVibe.Live, stays from OpenVibe.Rent, and a map for every walk. Every fact names its source.',
-            search: { action: '/cities', name: 'q', placeholder: 'A city: Lisbon, Tokyo, Mexico City…', hints: ['Lisbon', 'Tokyo', 'Mexico City', 'Barcelona'], label: 'Find a city' },
+            lede: 'Places worth going in any city, with real photos and what to look for; plans and lists to go together; streams from the places themselves. Every fact names its source.',
+            search: { action: '/cities', name: 'q', placeholder: 'Any city: Seattle, Lisbon, Tokyo…', hints: ['Seattle', 'Lisbon', 'Tokyo', 'Mexico City'], label: 'Find a city' },
             chips: [{ label: 'Live tours', href: '/live' }, { label: 'Routes', href: '/routes' }, { label: 'Stays', href: '/stays' }, { label: 'Flights', href: '/flights' }],
             proof,
             motif: heroMotif(),
@@ -261,8 +261,8 @@ function home({ counts = {}, live = [], recent = [], placeOfDay = null, cities =
         explore: {
             title: 'What a trip is made of',
             items: [
-                { title: 'Cities', text: 'The top 100 first, from Wikidata coordinates and Wikivoyage pages.', href: '/cities', icon: 'map' },
-                { title: 'Places', text: 'Tourism=* from OpenStreetMap, with the OSM link and fetch time.', href: '/cities', icon: 'pin' },
+                { title: 'Cities', text: 'Any city, on demand: things to do and free things to do, from Wikivoyage, Wikidata and OpenStreetMap.', href: '/cities', icon: 'map' },
+                { title: 'Places', text: 'Sights, parks, museums and viewpoints, each with a credited photo, why go, what to look for and how to visit.', href: '/cities', icon: 'pin' },
                 { title: 'Live tours', text: 'IRL streams now and recent VODs from OpenVibe.Live.', href: '/live', icon: 'live' },
                 { title: 'Stays', text: 'Rentals from OpenVibe.Rent; no payment is handled here.', href: '/stays', icon: 'home' },
                 { title: 'Flights', text: 'No key yet: a form opens the official airline-neutral search.', href: '/flights', icon: 'plane' },
