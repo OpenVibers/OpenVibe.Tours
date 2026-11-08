@@ -34,7 +34,7 @@ const safeImage = (v) => {
     try {
         const { protocol, hostname, pathname } = new URL(u);
         if (protocol !== 'https:' || !IMAGE_HOSTS.test(hostname)) return null;
-        return /wikimedia\.org$/i.test(hostname) || (hostname === 'openvibe.media' && /^\/api\/v2\/tours\/objects\//.test(pathname))
+        return /wikimedia\.org$/i.test(hostname) || (hostname === 'openvibe.media' && (/^\/api\/v2\/tours\/objects\//.test(pathname) || /^\/o\/[A-Za-z0-9_-]{6,64}$/.test(pathname)))
             || /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(pathname) ? u : null;
     } catch { return null; }
 };
