@@ -25,8 +25,8 @@ const { seed } = require('./helpers/seed');
             assert.match(r.text, /href="\/routes\/rte_/);
             assert.match(r.text, /href="\/stays"/);
             assert.match(r.text, /TouristAttraction|TouristDestination|FAQPage/);
-            // Cards ask Wikimedia for the width they draw, not the 1200 px file the city page keeps.
-            assert.match(r.text, /srcset="[^"]*\/330px-Tokyo_test\.jpg 330w[^"]*\/640px-Tokyo_test\.jpg 640w"/, 'cards carry 330/640');
+            // Commons may reject new widths for a returned thumbnail; cards use the verified URL.
+            assert.match(r.text, /\/1280px-Tokyo_test\.jpg/, 'cards use the Commons imageinfo thumbnail');
             assert.match(r.text, /width="640" height="360"/, 'the card shape is declared');
             const cities = await t.get('/cities');
             assert.strictEqual(cities.status, 200);
