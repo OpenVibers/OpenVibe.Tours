@@ -1,17 +1,23 @@
 'use strict';
 
 /**
- * OpenStreetMap through Overpass: one bounded `around:` query per city, tourism=* only, `out center tags`.
+ * OpenStreetMap through Overpass: one bounded `around:` query per city, named destinations only.
  * ODbL; every place keeps its openstreetmap.org URL and the query's fetch time. No bulk download.
  */
 const { fetchText } = require('./http');
+const { isPlace } = require('../places/is-place');
 
 // What a traveller means by "place". Lodging is Rent's; a hotel is not an attraction.
-const INTERESTING = new Set(['attraction', 'museum', 'viewpoint', 'artwork', 'gallery', 'zoo', 'theme_park', 'aquarium', 'information', 'picnic_site', 'botanical_garden']);
+const INTERESTING = new Set(['attraction', 'museum', 'viewpoint', 'gallery', 'zoo', 'theme_park', 'aquarium', 'park', 'garden', 'nature_reserve']);
 
-function overpassQuery(lat, lon, radiusM) {
-    const r = Math.max(100, Math.min(10_000, Math.round(Number(radiusM) || 3500)));
-    return `[out:json][timeout:25];nwr["tourism"](around:${r},${Number(lat)},${Number(lon)});out center tags 160;`;
+function overpassQuery(lat, lon, radiusM, tagged = false) {
+    const r = Math.max(100, Math.min(25_000, Math.round(Number(radiusM) || 15_000)));
+    const group = (wikidata) => {
+        const wd = wikidata ? '["wikidata"]' : '';
+        return `(nwr["tourism"~"^(attraction|museum|gallery|viewpoint|zoo|aquarium|theme_park)$"]["name"]${wd}(around:${r},${Number(lat)},${Number(lon)});nwr["leisure"~"^(park|garden|nature_reserve)$"]["name"]${wd}(around:${r},${Number(lat)},${Number(lon)}););`;
+    };
+    // Overpass emits the tagged group in full before the capped general group, in one paced request.
+    return `[out:json][timeout:25];${group(true)}out center tags;${tagged ? '' : `${group(false)}out center tags 400;`}`;
 }
 
 function commonsImage(tag) {
@@ -30,8 +36,8 @@ function addressOf(tags) {
 
 function placeFromElement(el, cityId, fetchedAt) {
     const tags = el.tags || {};
-    const kind = String(tags.tourism || '').toLowerCase();
-    if (!INTERESTING.has(kind) || !tags.name) return null;
+    const kind = String(tags.tourism || tags.leisure || '').toLowerCase();
+    if (!INTERESTING.has(kind) || !tags.name || !isPlace(tags.name, tags)) return null;
     const lat = Number.isFinite(Number(el.lat)) ? Number(el.lat) : Number(el.center && el.center.lat);
     const lon = Number.isFinite(Number(el.lon)) ? Number(el.lon) : Number(el.center && el.center.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
@@ -53,8 +59,10 @@ function placeFromElement(el, cityId, fetchedAt) {
         fee: ['yes', 'no'].includes(tags.fee) ? tags.fee : null,
         wikidataId: /^Q[1-9][0-9]{0,11}$/.test(tags.wikidata || '') ? tags.wikidata : null,
         wikipedia: tags.wikipedia || null,
-        imageUrl: commonsImage(tags.image) || commonsImage(tags.wikimedia_commons),
-        imageCredit: 'OpenStreetMap contributor',
+        // OSM tags do not carry an image licence or author. The places job resolves these through Commons.
+        imageFile: tags.image || tags.wikimedia_commons || null,
+        imageUrl: null,
+        imageCredit: null,
         imageLicense: null,
         description: tags.description ? String(tags.description).slice(0, 800) : null,
         source: 'openstreetmap',
@@ -72,8 +80,15 @@ function createOverpass({ config, fetchImpl, pace }) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body,
         });
         let json;
-        try { json = JSON.parse(out.text); } catch { throw new Error('Overpass answered something that is not JSON'); }
-        return { elements: (json && json.elements) || [], fetchedAt: out.fetchedAt };
+        try { json = JSON.parse(out.text); }
+        catch { throw new Error('Overpass answered something that is not JSON'); }
+        const seen = new Set();
+        return { elements: (json?.elements || []).filter((el) => {
+            const key = `${el.type}:${el.id}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }), fetchedAt: out.fetchedAt };
     }
     return { tourism, placeFromElement, overpassQuery, INTERESTING };
 }

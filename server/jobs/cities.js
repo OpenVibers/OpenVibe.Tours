@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { createWikivoyage } = require('../sources/wikivoyage-client');
 const { createWikidata } = require('../sources/wikidata');
+const { createPhotoCache } = require('../places/photo-cache');
 const { parseCityPage, pageUrl } = require('../sources/wikivoyage');
 const { slugify } = require('../store');
 
@@ -32,11 +33,12 @@ function fileTitle(name) {
 
 // A run under older rules is not fresh (jobs/index.js): credits-1 also cleans picture credits (and {{unesco}}, rail badges); inline-templates-2 kept
 // {{convert}}, the unit templates ({{km2}}), {{lang}} and the like in the summaries, so the first boot with it rewrites them.
-const CITIES_VERSION = 'credits-1';
+const CITIES_VERSION = 'district-see-do-2';
 
 function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
     const wikivoyage = createWikivoyage({ config, fetchImpl, pace: s.pace });
     const wikidata = createWikidata({ config, fetchImpl, pace: s.pace, log });
+    const photoCache = createPhotoCache({ config, s, fetchImpl, log });
 
     async function runOnce({ limit = config.openData.cityLimit } = {}) {
         const catalog = loadCatalog(limit);
@@ -56,7 +58,7 @@ function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
             const entity = entities.get(resolved.qid);
             if (!entity || entity.lat == null || entity.lon == null) { result.skipped.push(entry.name); continue; }
             const country = countries.get(entity.countryQid) || { label: entry.country, code: null };
-            const image = images.get(fileTitle(entity.image));
+            const image = await photoCache.cache(images.get(fileTitle(entity.image)));
             const title = entry.wikivoyage || entity.wikivoyageTitle || entry.name;
             const name = entity.label || entry.name;
             const city = {
@@ -74,6 +76,7 @@ function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
                 imageCredit: image ? image.credit : null,
                 imageLicense: image ? image.license : null,
                 imageLicenseUrl: image ? image.licenseUrl : null,
+                imageSourceUrl: image ? image.sourceUrl : null,
                 source: 'wikidata',
                 sourceUrl: `https://www.wikidata.org/wiki/${entity.qid}`,
                 fetchedAt: entity.fetchedAt || s.now(),
@@ -96,14 +99,14 @@ function createCitiesJob({ config, s, store, fetchImpl, log = console }) {
             if (main) {
                 const parsed = parseCityPage(main.wikitext, main.title, { districts: config.openData.districtPages });
                 const pages = [{ title: main.title, wikitext: main.wikitext, sourceUrl: main.sourceUrl, fetchedAt: main.fetchedAt }];
-                let see = parsed.see.map((x) => ({ ...x, pageUrl: main.sourceUrl }));
-                if (see.filter((x) => x.hasCoords).length < 4) {
+                let see = [...parsed.see, ...parsed.do].map((x) => ({ ...x, pageUrl: main.sourceUrl }));
+                if (parsed.districts.length) {
                     for (const district of parsed.districts.slice(0, config.openData.districtPages)) {
                         try {
                             const sub = await wikivoyage.page(district);
                             if (!sub) continue;
                             const subParsed = parseCityPage(sub.wikitext, sub.title, { districts: 0 });
-                            see = see.concat(subParsed.see.map((x) => ({ ...x, pageUrl: sub.sourceUrl })));
+                            see = see.concat([...subParsed.see, ...subParsed.do].map((x) => ({ ...x, pageUrl: sub.sourceUrl })));
                             pages.push({ title: sub.title, wikitext: sub.wikitext, sourceUrl: sub.sourceUrl, fetchedAt: sub.fetchedAt });
                             result.districts += 1;
                         } catch (err) {

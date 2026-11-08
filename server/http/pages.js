@@ -14,6 +14,7 @@ const { raw } = require('../render/html');
 const { send } = require('../render/layout');
 const views = require('../views');
 const { createFlights } = require('../flights');
+const { placePath } = require('../store');
 
 const PUBLIC_CACHE = 'public, max-age=60';
 const ovServe = require('openvibe-shared/serve');
@@ -21,12 +22,15 @@ const ovServe = require('openvibe-shared/serve');
 const SHARE_HEAD = `<link rel="stylesheet" href="${ovServe.url('ov-share.css')}"><script src="${ovServe.url('ov-share.js')}" defer></script>`;
 
 function createPageRoutes(ctx) {
-    const { config, store } = ctx;
+    const { config, store, discover, jobs } = ctx;
     const r = asyncRouter();
     r.use(express.urlencoded({ extended: false, limit: '64kb' }));
     const base = () => String(config.baseUrl).replace(/\/+$/, '');
     const page = (req, res, o, status = 200) => send(res, status, { viewer: req.viewer, config, path: req.originalUrl, ...o });
     const signedIn = (req) => req.viewer && req.viewer.kind === 'user' && req.viewer.subject;
+    const imageLd = (p) => views.safeImage(p.image_url) && p.image_credit && p.image_license && p.image_source_url
+        ? { '@type': 'ImageObject', contentUrl: p.image_url, url: p.image_source_url,
+            creditText: p.image_credit, license: p.image_license_url || p.image_license } : undefined;
     const flights = createFlights({ config });
 
     const notFromHere = (req, res) => page(req, res, {
@@ -67,35 +71,53 @@ function createPageRoutes(ctx) {
     // ── Cities ───────────────────────────────────────────────
     r.get('/cities', async (req, res) => {
         const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 80) : '';
-        const cities = await store.listCities({ limit: 100, q: q || null });
+        let cities = await store.listCities({ limit: 100, q: q || null });
+        if (q && !cities.length) {
+            try {
+                const city = await discover.ensureCity(q);
+                if (city) return res.redirect(303, `/city/${encodeURIComponent(city.slug)}`);
+            } catch (err) { ctx.log.warn(`[Tours city lookup] ${err.message}`); }
+        }
         return page(req, res, {
             index: true, cache: q ? null : PUBLIC_CACHE, title: 'Cities',
-            description: 'The top 100 cities from Wikidata and Wikivoyage, with places from OpenStreetMap, self-guided routes, live tours and stays.',
+            description: 'Find things to do in any city, with places from OpenStreetMap and Wikivoyage.',
             jsonLd: [seo.jsonLd.webPage({ name: 'Cities', url: `${base()}/cities`, description: 'The top 100 cities from open data.', siteUrl: base() })],
             body: raw(views.citiesPage({ cities, q })),
         });
     });
 
     r.get('/city/:slug', async (req, res) => {
-        const city = await store.cityBySlug(String(req.params.slug || ''));
+        let city = await store.cityBySlug(String(req.params.slug || ''));
+        if (!city) {
+            try { city = await discover.ensureCity(String(req.params.slug || '').replace(/-/g, ' ')); }
+            catch (err) { ctx.log.warn(`[Tours city lookup] ${err.message}`); }
+        }
+        else if (city.place_count < 24) {
+            try { city = await discover.ensureCity(city.name); }
+            catch (err) { ctx.log.warn(`[Tours city refresh] ${err.message}`); }
+        }
         if (!city) return page(req, res, { index: false, title: 'Not found', body: raw(views.notFound()) }, 404);
+        if (city.slug !== req.params.slug) return res.redirect(301, `/city/${encodeURIComponent(city.slug)}`);
+        if (!city.osm_fetched_at && (!city.osm_attempted_at || Date.now() - new Date(city.osm_attempted_at).getTime() > 15 * 60_000)) {
+            try { await jobs.places.populateCity(city); } catch (err) { ctx.log.warn(`[Tours city places] ${err.message}`); }
+        }
         const [places, routes, live, stays] = await Promise.all([
             store.cityPlaces(city.id, { limit: 60 }), store.cityRoutes(city.id), store.cityLive(city.id), store.cityStays(city.id),
         ]);
         const attractions = places.slice(0, 10).map((p) => ({
-            '@type': 'TouristAttraction', name: p.name, url: `${base()}/place/${p.id}`,
+            '@type': 'TouristAttraction', name: p.name, url: `${base()}${placePath(p)}`,
             geo: { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lon },
-            ...(p.description ? { description: p.description } : {}), ...(views.safeImage(p.image_url) ? { image: p.image_url } : {}),
+            ...(p.description ? { description: p.description } : {}), ...(imageLd(p) ? { image: imageLd(p) } : {}),
         }));
         const tripLd = routes.slice(0, 3).map((rt) => ({
             '@type': 'TouristTrip', name: rt.title, url: `${base()}/routes/${rt.id}`, description: rt.summary || undefined,
             itinerary: { '@type': 'ItemList', numberOfItems: rt.stop_count },
         }));
         return page(req, res, {
-            index: true, cache: PUBLIC_CACHE, title: city.name,
+            index: true, cache: PUBLIC_CACHE, title: `Things to do in ${city.name}`,
             description: city.summary ? String(city.summary).slice(0, 180) : `${city.name}: places, self-guided routes, live tours and stays.`,
             jsonLd: [
-                { '@context': 'https://schema.org', '@type': 'TouristDestination', name: city.name, url: `${base()}/city/${city.slug}`, description: city.summary || undefined, geo: { '@type': 'GeoCoordinates', latitude: city.lat, longitude: city.lon }, touristType: 'Independent', ...(city.image_url ? { image: city.image_url } : {}) },
+                { '@context': 'https://schema.org', '@type': 'TouristDestination', name: city.name, url: `${base()}/city/${city.slug}`, description: city.summary || undefined, geo: { '@type': 'GeoCoordinates', latitude: city.lat, longitude: city.lon }, touristType: 'Independent', ...(imageLd(city) ? { image: imageLd(city) } : {}) },
                 ...(attractions.length ? [{ '@context': 'https://schema.org', '@type': 'ItemList', name: `Places in ${city.name}`, numberOfItems: attractions.length, itemListElement: attractions.map((a, i) => ({ '@type': 'ListItem', position: i + 1, item: a })) }] : []),
                 ...tripLd,
                 seo.jsonLd.breadcrumbs([{ name: 'Cities', url: `${base()}/cities` }, { name: city.name, url: `${base()}/city/${city.slug}` }]),
@@ -104,31 +126,72 @@ function createPageRoutes(ctx) {
         });
     });
 
+    r.get('/city/:slug/free', async (req, res) => {
+        let city = await store.cityBySlug(String(req.params.slug || ''));
+        if (city && city.place_count < 24) {
+            try { city = await discover.ensureCity(city.name); }
+            catch (err) { ctx.log.warn(`[Tours city refresh] ${err.message}`); }
+        }
+        if (!city) return page(req, res, { index: false, title: 'Not found', body: raw(views.notFound()) }, 404);
+        const places = (await store.cityPlaces(city.id, { limit: 200 })).filter((p) => p.fee === 'no');
+        return page(req, res, {
+            index: true, cache: PUBLIC_CACHE, title: `Free things to do in ${city.name}`,
+            description: `Places in ${city.name} that OpenStreetMap marks as free to visit.`,
+            jsonLd: [seo.jsonLd.itemList(`Free things to do in ${city.name}`, places.map((p) => ({ name: p.name, url: `${base()}${placePath(p)}` })), { url: `${base()}/city/${city.slug}/free` })],
+            body: raw(views.cityPage({ city, places, free: true })),
+        });
+    });
+
+    r.get('/places', async (req, res) => {
+        const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 120) : '';
+        if (!q) return res.redirect(303, '/cities');
+        try {
+            const place = await discover.ensurePlace(q);
+            if (place) return res.redirect(303, placePath(place));
+        } catch (err) { ctx.log.warn(`[Tours place lookup] ${err.message}`); }
+        return page(req, res, { index: false, title: 'Place not found', body: raw(views.notFound()) }, 404);
+    });
+
+    r.get('/remind-place/:id', async (req, res) => {
+        const place = await store.placeById(String(req.params.id || ''));
+        const date = String(req.query.date || '');
+        if (!place || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T18:00:00Z`))
+            || Date.parse(`${date}T18:00:00Z`) <= Date.now()) return page(req, res, { index: false, title: 'Choose a future date', body: raw(views.notFound()) }, 400);
+        const params = new URLSearchParams({
+            title: views.placeName(place), at: `${date}T18:00:00Z`, url: `${base()}${placePath(place)}`, from: 'openvibe.tours',
+        });
+        return res.redirect(303, `https://openvibe.today/remind?${params}`);
+    });
+
     // ── Places ───────────────────────────────────────────────
     r.get('/place/:id', async (req, res) => {
-        const place = await store.placeById(String(req.params.id || ''));
+        const placeId = String(req.params.id || '').match(/plc_[0-9A-HJKMNP-TV-Z]{26}$/)?.[0];
+        const place = placeId ? await discover.enrichPlace(await store.placeById(placeId)) : null;
         if (!place) return page(req, res, { index: false, title: 'Not found', body: raw(views.notFound()) }, 404);
-        const [routeList, trips] = await Promise.all([
+        const [routeList, trips, nearby, summary, live] = await Promise.all([
             store.routesForPlace(place.id),
             signedIn(req) ? store.tripsForSubject(req.viewer.subject) : Promise.resolve([]),
+            store.cityPlaces(place.city_id, { limit: 20 }),
+            ctx.narrative.forPlace(place),
+            store.placeLive(place.id),
         ]);
         return page(req, res, {
-            index: true, cache: PUBLIC_CACHE, title: views.localName(place) ? `${views.placeName(place)} (${place.name})` : place.name,
+            index: true, cache: PUBLIC_CACHE, path: placePath(place), title: views.localName(place) ? `${views.placeName(place)} (${place.name})` : place.name,
             description: place.description || `${views.placeName(place)} in ${place.city_name}: coordinates, address, opening hours, source and map.`,
             jsonLd: [
                 {
                     '@context': 'https://schema.org', '@type': 'TouristAttraction', name: views.placeName(place),
                     ...(views.localName(place) ? { alternateName: place.name } : {}),
-                    url: `${base()}/place/${place.id}`, description: place.description || undefined,
+                    url: `${base()}${placePath(place)}`, description: place.description || undefined,
                     geo: { '@type': 'GeoCoordinates', latitude: place.lat, longitude: place.lon },
                     ...(place.address ? { address: { '@type': 'PostalAddress', streetAddress: place.address, addressLocality: place.city_name } } : {}),
-                    ...(views.safeImage(place.image_url) ? { image: place.image_url } : {}),
+                    ...(imageLd(place) ? { image: imageLd(place) } : {}),
                     ...(place.fee === 'no' ? { isAccessibleForFree: true } : place.fee === 'yes' ? { isAccessibleForFree: false } : {}),
                     sameAs: [place.osm_url],
                 },
-                seo.jsonLd.breadcrumbs([{ name: 'Cities', url: `${base()}/cities` }, { name: place.city_name, url: `${base()}/city/${place.city_slug}` }, { name: views.placeName(place), url: `${base()}/place/${place.id}` }]),
+                seo.jsonLd.breadcrumbs([{ name: 'Cities', url: `${base()}/cities` }, { name: place.city_name, url: `${base()}/city/${place.city_slug}` }, { name: views.placeName(place), url: `${base()}${placePath(place)}` }]),
             ],
-            body: raw(views.placePage({ place, routeList, trips })),
+            body: raw(views.placePage({ place, routeList, trips, summary, live, nearby: nearby.filter((p) => p.id !== place.id).slice(0, 6) })),
         });
     });
 

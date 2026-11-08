@@ -19,6 +19,11 @@ function createLiveJob({ config, s, store, fetchImpl, log = console }) {
     async function runOnce() {
         const cities = await store.listCities({ limit: 200 });
         const match = cityMatcher(cities);
+        async function location(item) {
+            const place = item.placeId ? await store.placeById(item.placeId) : null;
+            const city = place ? { id: place.city_id, name: place.city_name } : match(`${item.title} ${item.tags.join(' ')}`);
+            return { ...item, placeId: place?.id || null, cityId: city?.id || null, cityName: city?.name || null };
+        }
         const result = { streams: 0, vods: 0, clips: 0, withCity: 0, errors: [] };
         let streams = [];
         let recent = [];
@@ -31,28 +36,28 @@ function createLiveJob({ config, s, store, fetchImpl, log = console }) {
         if (!result.errors.some((e) => e.startsWith('streams:'))) {
             await store.clearLiveStreams();
             for (const item of streams) {
-                const city = match(`${item.title} ${item.tags.join(' ')}`);
-                await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
+                const located = await location(item);
+                await store.upsertLive(located);
                 result.streams += 1;
-                if (city) result.withCity += 1;
+                if (located.cityId) result.withCity += 1;
             }
         }
         const recordingsOk = !result.errors.some((e) => e.startsWith('recent:')) && !result.errors.some((e) => e.startsWith('clips:'));
         if (recordingsOk) await store.clearLiveRecordings();
         if (!result.errors.some((e) => e.startsWith('recent:'))) {
             for (const item of recent) {
-                const city = match(`${item.title} ${item.tags.join(' ')}`);
-                await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
+                const located = await location(item);
+                await store.upsertLive(located);
                 result.vods += 1;
-                if (city) result.withCity += 1;
+                if (located.cityId) result.withCity += 1;
             }
         }
         if (!result.errors.some((e) => e.startsWith('clips:'))) {
             for (const item of clips) {
-                const city = match(`${item.title} `);
-                await store.upsertLive({ ...item, cityId: city ? city.id : null, cityName: city ? city.name : null });
+                const located = await location(item);
+                await store.upsertLive(located);
                 result.clips += 1;
-                if (city) result.withCity += 1;
+                if (located.cityId) result.withCity += 1;
             }
         }
         await store.trimLiveVods(200);

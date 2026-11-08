@@ -40,8 +40,9 @@ OpenVibe.Tours is the travel room. V1 has six things, all from open data or the 
 
 ## Does not own
 
-- **Live, Rent and AI** — OpenVibe.Live, OpenVibe.Rent and OpenVibe.AI. Tours reads their public APIs and never
-  writes to them. It never uses a service token.
+- **Live, Rent, Media and AI** — Tours reads public Live/Rent pages. Licensed place images are copied to Media with
+  the `media.object.upload` service scope; sourced place summaries use AI with `ai.run.create ai.run.read` when
+  `OV_AI_INTERNAL_URL` is configured. Both keep the original source and attribution on the place page.
 - **Identity and roles** — OpenVibe.Network. Tours is OAuth client `tours` (PKCE S256) and verifies session tokens
   against the Network JWKS; a person's canonical subject is `usr_…`.
 - **OpenStreetMap, Wikivoyage, Wikidata, Commons** — external open data, cached in Tours' own tables with the source
@@ -55,12 +56,13 @@ OpenVibe.Tours is the travel room. V1 has six things, all from open data or the 
 | OpenStreetMap via Overpass | places (`tourism=*`) | ODbL 1.0; contact User-Agent, per-host pacing, one bounded `around:` query, no bulk download | OSM object URL, fetched time |
 | Wikivoyage | city summary, See listings, route stops | CC BY-SA 4.0; the page URL on every city and stop | page URL, fetched time |
 | Wikidata | coordinates, population, country, English Wikivoyage sitelink | CC0 | Q id, fetched time |
-| Wikimedia Commons | city image + licence/credit | each image's own licence (usually CC BY-SA) | credit, licence, licence URL |
+| Wikimedia Commons and Openverse | place and city images with licence/credit | CC BY, CC BY-SA, CC0 or public domain; no NC/ND | source URL, credit, licence, Media thumbnail |
 | OpenVibe.Live | live IRL streams, VODs, clips | public API; read-only | item URL, fetched time |
 | OpenVibe.Rent | stays | public listings; read-only | listing URL, fetched time |
 
-OpenVibe.AI is **not** used: its public API has chat, generate, summarize, classify, extract, embed, image and
-research, but no speech synthesis. The route schema has `audio_status`/`audio_url` ready for the day it does.
+OpenVibe.AI may summarize the cited place description for “Why go”; the page labels this as an AI summary and links
+the source. If the AI call is unavailable, the sourced description remains. AI has no speech synthesis route; route
+audio remains off.
 
 ## Jobs
 

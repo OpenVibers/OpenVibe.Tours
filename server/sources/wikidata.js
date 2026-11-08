@@ -10,6 +10,14 @@
  *   imageInfo(files)      a Commons file's 1200px URL and its licence/credit (extmetadata)
  */
 const { fetchJson, SourceError } = require('./http');
+const { isPlace } = require('../places/is-place');
+
+// Commercial pages use only licences that permit reuse and derivatives. A Commons record without
+// both an author and a source is no better than an unlicensed hotlink.
+function reusableImage({ license, credit, url, sourceUrl }) {
+    return Boolean(url && sourceUrl && credit && license && /^(?:CC0|CC BY(?:-SA)?(?:\s|$)|Public Domain|PDM)/i.test(license)
+        && !/\b(?:NC|ND)\b/i.test(license));
+}
 
 const chunk = (list, n) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };
 
@@ -28,9 +36,11 @@ function parseEntity(entity) {
     const coord = firstClaim(entity, 'P625');
     const pop = firstClaim(entity, 'P1082');
     const image = firstClaim(entity, 'P18');
+    const commonsCategory = firstClaim(entity, 'P373');
     const country = firstClaim(entity, 'P17');
     const label = (entity.labels && entity.labels.en && entity.labels.en.value) || null;
     const sitelink = entity.sitelinks && entity.sitelinks.enwikivoyage && entity.sitelinks.enwikivoyage.title;
+    const wikipediaTitle = entity.sitelinks && entity.sitelinks.enwiki && entity.sitelinks.enwiki.title;
     return {
         qid: entity.id,
         label,
@@ -38,13 +48,60 @@ function parseEntity(entity) {
         lon: coord && Number.isFinite(Number(coord.longitude)) ? Number(coord.longitude) : null,
         population: pop && Number.isFinite(Number(String(pop.amount || '').replace(/^\+/, ''))) ? Number(String(pop.amount).replace(/^\+/, '')) : null,
         image: image ? String(image) : null,
+        commonsCategory: typeof commonsCategory === 'string' ? `Category:${commonsCategory}` : null,
         countryQid: country && typeof country === 'object' && country.id ? country.id : null,
         wikivoyageTitle: sitelink || null,
+        wikipediaTitle: wikipediaTitle || null,
+        sitelinks: Object.keys(entity.sitelinks || {}).length,
     };
+}
+
+function extractGuide(extract, title) {
+    const text = String(extract || '').replace(/\r/g, '').trim();
+    const lead = text.split(/\n\s*==/)[0].trim();
+    const sentences = lead.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()) || [];
+    const intro = sentences[0] || '';
+    if (!intro || intro.length < 20) return null;
+    const why = sentences.slice(1, 4).join(' ').slice(0, 600) || null;
+    const section = (name) => text.match(new RegExp(`== ${name} ==\\n([\\s\\S]*?)(?=\\n== |$)`, 'i'))?.[1] || '';
+    const features = section('Features and programs').match(/Major features[^.]*\./i)?.[0] || null;
+    const visit = text.match(/[^.\n]*(?:public tour|guided tour|free tour)[^.\n]*\./i)?.[0]?.trim() || null;
+    // An unrelated plant's biology is not advice about when to visit this destination.
+    const named = String(title || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const seasonal = /\b(?:spring|summer|fall|autumn|winter|bloom(?:ing|s)?|foliage|season(?:al|s)?|January|February|March|April|May|June|July|August|September|October|November|December)\b/i;
+    const season = text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim())
+        .find((s) => seasonal.test(s) && new RegExp(`\\b${named}\\b`, 'i').test(s)) || null;
+    return { intro: intro.slice(0, 600), why, features: features?.slice(0, 400) || null,
+        visit: visit?.slice(0, 400) || null, season: season?.slice(0, 400) || null,
+        url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(title).replace(/ /g, '_'))}` };
 }
 
 function createWikidata({ config, fetchImpl, pace, log = console }) {
     const opts = { fetchImpl, pace, timeoutMs: config.upstreams.timeoutMs, userAgent: config.openData.userAgent, label: 'Wikidata' };
+
+    async function notablePlaces(cityQid) {
+        if (!/^Q[1-9][0-9]{0,11}$/.test(String(cityQid || ''))) return [];
+        // WDQS times out joining P131+ to P279* on a large city. Its P31 English labels are bounded after the
+        // administrative-chain match; two rows for one item are collapsed below before the top 60 are kept.
+        const query = `SELECT DISTINCT ?item ?label ?coordinate ?links ?instanceLabel WHERE {
+          ?item wdt:P131+ wd:${cityQid}; wdt:P625 ?coordinate; wdt:P31 ?kind; wikibase:sitelinks ?links; rdfs:label ?label.
+          ?kind rdfs:label ?instanceLabel.
+          FILTER(LANG(?label) = "en" && LANG(?instanceLabel) = "en" &&
+            REGEX(?instanceLabel, "museum|park|garden|landmark|viewpoint|zoo|aquarium|observation tower|monument|tourist attraction|art gallery|historic site", "i"))
+        } ORDER BY DESC(?links) LIMIT 120`;
+        const url = `${config.upstreams.wikidataQuery}?${new URLSearchParams({ query, format: 'json' })}`;
+        const { json, fetchedAt } = await fetchJson(url, { ...opts, label: 'Wikidata Query Service', retries: 0 });
+        const seen = new Set();
+        return (json?.results?.bindings || []).map((b) => {
+            const qid = String(b.item?.value || '').match(/\/Q[1-9][0-9]{0,11}$/)?.[0]?.slice(1);
+            const coord = String(b.coordinate?.value || '').match(/^Point\((-?[\d.]+) (-?[\d.]+)\)$/);
+            const name = b.label?.value || '';
+            if (!qid || seen.has(qid) || !coord || !isPlace(name, { instanceLabel: b.instanceLabel?.value })) return null;
+            seen.add(qid);
+            return { qid, name, lon: Number(coord[1]), lat: Number(coord[2]), sitelinks: Number(b.links?.value || b.sitelinks?.value || 0),
+                sourceUrl: `https://www.wikidata.org/wiki/${qid}`, fetchedAt };
+        }).filter(Boolean).slice(0, 60);
+    }
 
     /** Wikipedia titles → Q ids. Returns a Map keyed by the requested title (redirects resolved). */
     async function resolveQids(titles) {
@@ -70,6 +127,17 @@ function createWikidata({ config, fetchImpl, pace, log = console }) {
         return out;
     }
 
+    async function article(title) {
+        const name = String(title || '').trim();
+        if (!name || name.length > 120) return null;
+        const url = `${config.upstreams.wikipedia}/w/api.php?${new URLSearchParams({
+            action: 'query', format: 'json', formatversion: '2', prop: 'extracts', explaintext: '1', titles: name,
+        })}`;
+        const { json } = await fetchJson(url, { ...opts, label: 'Wikipedia' });
+        const page = json?.query?.pages?.[0];
+        return page && !page.missing ? extractGuide(page.extract, page.title || name) : null;
+    }
+
     /** Q ids → parsed entities (all props the city job needs). */
     async function entities(qids) {
         const wanted = [...new Set((qids || []).filter((q) => /^Q[1-9][0-9]{0,11}$/.test(String(q))))];
@@ -77,7 +145,7 @@ function createWikidata({ config, fetchImpl, pace, log = console }) {
         for (const group of chunk(wanted, 40)) {
             const url = `${config.upstreams.wikidata}/w/api.php?${new URLSearchParams({
                 action: 'wbgetentities', format: 'json', ids: group.join('|'), props: 'claims|labels|sitelinks',
-                languages: 'en', sitefilter: 'enwikivoyage',
+                languages: 'en',
             })}`;
             const { json, fetchedAt } = await fetchJson(url, { ...opts, label: 'Wikidata' });
             const entitiesObj = (json && json.entities) || {};
@@ -137,18 +205,31 @@ function createWikidata({ config, fetchImpl, pace, log = console }) {
                 const ENT = { '&amp;': '&', '&quot;': '"', '&#39;': "'", '&lt;': '<', '&gt;': '>', '&nbsp;': ' ' };
                 const strip = (s) => (s ? s.replace(/<[^>]*>/g, ' ').replace(/&(amp|quot|#39|lt|gt|nbsp);/g, (e) => ENT[e]).replace(/\s+/g, ' ')
                     .replace(/\s+([.,;:!?])/g, '$1').replace(/[\s.]+$/, '').trim() || null : null);
-                out.set(String(page.title), {
+                const image = {
                     url: info.thumburl || info.url || null,
-                    credit: strip(val('Artist')) || strip(val('Credit')) || 'Wikimedia Commons',
+                    credit: strip(val('Artist')) || strip(val('Credit')),
                     license: strip(val('LicenseShortName')),
                     licenseUrl: val('LicenseUrl'),
-                });
+                    sourceUrl: `https://commons.wikimedia.org/wiki/${encodeURIComponent(String(page.title).replace(/ /g, '_'))}`,
+                };
+                if (reusableImage(image)) out.set(String(page.title), image);
             }
         }
         return out;
     }
 
-    return { resolveQids, entities, countryInfo, imageInfo, parseEntity };
+    async function categoryFiles(category) {
+        const name = String(category || '').trim();
+        if (!/^Category:[^|#?]{3,120}$/i.test(name)) return [];
+        const url = `${config.upstreams.commons}/w/api.php?${new URLSearchParams({
+            action: 'query', format: 'json', formatversion: '2', list: 'categorymembers',
+            cmtitle: name, cmtype: 'file', cmlimit: '5',
+        })}`;
+        const { json } = await fetchJson(url, { ...opts, label: 'Commons category' });
+        return ((json && json.query && json.query.categorymembers) || []).map((r) => r.title).filter((t) => /^File:/i.test(t));
+    }
+
+    return { resolveQids, entities, countryInfo, imageInfo, categoryFiles, article, notablePlaces, parseEntity };
 }
 
-module.exports = { createWikidata, parseEntity, claimValues, firstClaim, chunk, SourceError };
+module.exports = { createWikidata, parseEntity, extractGuide, claimValues, firstClaim, chunk, SourceError, reusableImage };

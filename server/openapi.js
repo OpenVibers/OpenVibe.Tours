@@ -99,7 +99,7 @@ const document = {
         '/api/v1/ping': { get: { summary: 'Liveness', responses: json({ type: 'object', properties: { ok: { type: 'boolean' }, service: { type: 'string' } } }) } },
         '/api/v1/cities': {
             get: {
-                summary: 'List the top cities', tags: ['Cities'],
+                summary: 'List cities; a new city name is resolved and cached on demand', tags: ['Cities'],
                 parameters: [query('limit', { type: 'integer', minimum: 1, maximum: 200, default: 100 }), query('offset', { type: 'integer', minimum: 0, default: 0 }), query('q', { type: 'string', maxLength: 80 })],
                 responses: json({ type: 'object', properties: { count: { type: 'integer' }, cities: { type: 'array', items: { $ref: '#/components/schemas/City' } } } }),
             },
@@ -109,6 +109,11 @@ const document = {
                 summary: 'One city with its places and routes', tags: ['Cities'], parameters: [pathParam('slug', 'lisbon')],
                 responses: { ...json({ type: 'object', properties: { city: { $ref: '#/components/schemas/City' }, places: { type: 'array', items: { $ref: '#/components/schemas/Place' } }, routes: { type: 'array', items: { $ref: '#/components/schemas/Route' } }, live: { type: 'array', items: { $ref: '#/components/schemas/Live' } }, stays: { type: 'array', items: { $ref: '#/components/schemas/Stay' } } } }), '404': { description: 'No such city' } },
             },
+        },
+        '/api/v1/places': {
+            get: { summary: 'Resolve a place name and return its sourced place page data', tags: ['Places'],
+                parameters: [query('q', { type: 'string', minLength: 3, maxLength: 120 })],
+                responses: { ...json({ type: 'object', properties: { place: { $ref: '#/components/schemas/Place' } } }), '404': { description: 'No such place' } } },
         },
         '/api/v1/places/{id}': {
             get: { summary: 'One place', tags: ['Places'], parameters: [pathParam('id', 'plc_01JABCDEFGHJKMNPQRSTVWXYZ0')], responses: { ...json({ type: 'object', properties: { place: { $ref: '#/components/schemas/Place' }, routes: { type: 'array', items: { $ref: '#/components/schemas/Route' } } } }), '404': { description: 'No such place' } } },

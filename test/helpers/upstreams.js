@@ -16,6 +16,10 @@
 const http = require('http');
 
 const WIKIVOYAGE = {
+    Seattle: `'''Seattle''' sits beside Puget Sound, with parks, gardens, and waterfront walks.
+==See==
+{{see | name=Kubota Garden | lat=47.5122 | long=-122.2654 | content=The Japanese garden has a moon bridge and seasonal colour.}}
+`,
     Tokyo: `'''Tokyo''' is the capital of Japan and one of the world's great cities. It mixes quiet shrines with dense neighbourhoods, and the trains go everywhere.
 
 ==See==
@@ -86,6 +90,7 @@ The oldest quarter, climbed by tram and on foot.
 };
 
 const ENTITIES = {
+    Q5083: { label: 'Seattle', lat: 47.6062, lon: -122.3321, population: 737015, image: 'File:Seattle test.jpg', country: 'Q30', sitelink: 'Seattle' },
     Q1490: { label: 'Tokyo', lat: 35.6762, lon: 139.6503, population: 13960000, image: 'File:Tokyo test.jpg', country: 'Q17', sitelink: 'Tokyo' },
     Q1353: { label: 'Delhi', lat: 28.6139, lon: 77.2090, population: 16787941, image: 'File:Delhi test.jpg', country: 'Q668', sitelink: 'Delhi' },
     Q8686: { label: 'Shanghai', lat: 31.2304, lon: 121.4737, population: 24870895, image: 'File:Shanghai test.jpg', country: 'Q148', sitelink: 'Shanghai' },
@@ -93,8 +98,8 @@ const ENTITIES = {
     Q90: { label: 'Paris', lat: 48.8566, lon: 2.3522, population: 2140526, image: 'File:Paris test.jpg', country: 'Q142', sitelink: 'Paris' },
     Q1492: { label: 'Barcelona', lat: 41.3874, lon: 2.1686, population: 1620343, image: 'File:Barcelona test.jpg', country: 'Q29', sitelink: 'Barcelona' },
 };
-const COUNTRIES = { Q17: { label: 'Japan', code: 'JP' }, Q668: { label: 'India', code: 'IN' }, Q148: { label: 'China', code: 'CN' }, Q45: { label: 'Portugal', code: 'PT' }, Q142: { label: 'France', code: 'FR' }, Q29: { label: 'Spain', code: 'ES' } };
-const TITLE_QID = { Tokyo: 'Q1490', Delhi: 'Q1353', Shanghai: 'Q8686', Lisbon: 'Q597', Paris: 'Q90', Barcelona: 'Q1492', 'New York City': 'Q60' };
+const COUNTRIES = { Q30: { label: 'United States', code: 'US' }, Q17: { label: 'Japan', code: 'JP' }, Q668: { label: 'India', code: 'IN' }, Q148: { label: 'China', code: 'CN' }, Q45: { label: 'Portugal', code: 'PT' }, Q142: { label: 'France', code: 'FR' }, Q29: { label: 'Spain', code: 'ES' } };
+const TITLE_QID = { Seattle: 'Q5083', Tokyo: 'Q1490', Delhi: 'Q1353', Shanghai: 'Q8686', Lisbon: 'Q597', Paris: 'Q90', Barcelona: 'Q1492', 'New York City': 'Q60' };
 
 const LIVE = {
     streams: [{ id: 1, username: 'ada', display_name: 'Ada', title: 'IRL walk in Lisbon', category: 'irl', tags: '[]', viewer_count: 12, thumbnail_url: null, started_at: '2026-10-31 10:00:00' }],
@@ -131,6 +136,7 @@ async function startUpstreams() {
         clips: JSON.parse(JSON.stringify(LIVE.clips)),
         listings: JSON.parse(JSON.stringify(LISTINGS)),
         overpass: null,
+        nominatim: {},
         down: {},
         requests: [],
     };
@@ -139,6 +145,9 @@ async function startUpstreams() {
         const url = new URL(req.url, 'http://x');
         state.requests.push({ method: req.method, path: url.pathname, query: url.search, headers: req.headers, body: raw });
         if (state.down[url.pathname] || state.down.all) return json(503, { error: 'source down' });
+
+        if (url.pathname === '/search') return json(200, state.nominatim[String(url.searchParams.get('q') || '').toLowerCase()] || []);
+        if (url.pathname === '/sparql') return json(200, { results: { bindings: state.notable || [] } });
 
         if (url.pathname === '/w/api.php') {
             const action = url.searchParams.get('action');

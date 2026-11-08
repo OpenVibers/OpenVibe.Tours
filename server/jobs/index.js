@@ -118,7 +118,7 @@ function createJobs({ config, s, store, fetchImpl = globalThis.fetch, log = cons
         timers.length = 0;
     }
 
-    return { runOnce, runAll, start, stop, isFresh, jobs };
+    return { runOnce, runAll, start, stop, isFresh, jobs, places: creators.places };
 }
 
 module.exports = { createJobs };

@@ -19,11 +19,11 @@ const imageWidth = new Function(`${iw[0]}; return imageWidth;`)();
 // Cards ask for the width they draw on both URL shapes Wikimedia's imageinfo returns, and on a
 // stored original; no other host is rewritten.
 const thumbUrl = 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.jpg/1280px-Foo.jpg?utm_source=commons.wikimedia.org';
-assert.strictEqual(imageWidth(thumbUrl, 330), 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.jpg/330px-Foo.jpg?utm_source=commons.wikimedia.org', 'a thumb URL changes its width');
-assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/5/51/Foo.png?utm_source=x', 640), 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Foo.png/640px-Foo.png?utm_source=x', 'a stored original becomes a thumb');
+assert.strictEqual(imageWidth(thumbUrl, 330), null, 'a Commons thumbnail keeps the verified imageinfo URL');
+assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/5/51/Foo.png?utm_source=x', 640), null, 'an unscaled original keeps its URL because Wikimedia may reject an enlarged thumb');
 assert.strictEqual(imageWidth('https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg?width=1000', 330), 'https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg?width=330', 'Special:FilePath takes a width');
 assert.strictEqual(imageWidth('https://openvibe.media/t/x.jpg', 330), null, 'a non-Wikimedia picture is not rewritten');
-assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/a/ab/Foo.jpg', 330), 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.jpg/330px-Foo.jpg', 'a two-letter hash prefix');
+assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/a/ab/Foo.jpg', 330), null, 'an original with a two-letter hash prefix keeps its URL');
 assert.strictEqual(imageWidth(null, 330), null);
 
 assert.strictEqual(safeImage('https://photos.app.goo.gl/A7PbTNW1RbBbZUrTA'), null, 'a share link is not a picture');

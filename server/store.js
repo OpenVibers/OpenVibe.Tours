@@ -28,6 +28,7 @@ function slugify(value) {
     return String(value == null ? '' : value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
         .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);
 }
+const placePath = (p) => `/place/${slugify(p.name_en || p.name) || 'place'}-${p.id}`;
 
 const iso = (v) => (v == null ? null : (v instanceof Date ? v.toISOString() : String(v)));
 const day = (v) => (v == null ? null : (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)));
@@ -45,7 +46,10 @@ function wireCity(row) {
         wikidata_id: row.wikidata_id, wikipedia_title: row.wikipedia_title || null, wikivoyage_title: row.wikivoyage_title || null,
         summary: row.summary || null, image_url: row.image_url || null, image_credit: row.image_credit || null,
         image_license: row.image_license || null, image_license_url: row.image_license_url || null,
+        image_source_url: row.image_source_url || null,
         source: row.source, source_url: row.source_url, fetched_at: iso(row.fetched_at),
+        osm_fetched_at: iso(row.osm_fetched_at),
+        osm_attempted_at: iso(row.osm_attempted_at),
         created_at: iso(row.created_at), updated_at: iso(row.updated_at),
         ...(row.place_count != null ? { place_count: Number(row.place_count) } : {}),
         ...(row.route_count != null ? { route_count: Number(row.route_count) } : {}),
@@ -60,9 +64,12 @@ function wirePlace(row) {
         address: row.address || null, website: row.website || null, opening_hours: row.opening_hours || null,
         wheelchair: row.wheelchair || null, fee: row.fee || null, wikidata_id: row.wikidata_id || null,
         wikipedia: row.wikipedia || null, image_url: row.image_url || null, image_credit: row.image_credit || null,
-        image_license: row.image_license || null, description: row.description || null,
+        image_license: row.image_license || null, image_license_url: row.image_license_url || null,
+        image_source_url: row.image_source_url || null, gallery: typeof row.gallery === 'string' ? JSON.parse(row.gallery) : (row.gallery || []), description: row.description || null,
+        guide_why: row.guide_why || null, guide_features: row.guide_features || null, guide_visit: row.guide_visit || null,
+        guide_season: row.guide_season && String(row.guide_season).toLowerCase().includes(String(row.name).toLowerCase()) ? row.guide_season : null,
         source: row.source, source_url: row.source_url, fetched_at: iso(row.fetched_at),
-        osm_url: row.osm_type === 'wikivoyage' ? null : `https://www.openstreetmap.org/${row.osm_type}/${row.osm_id}`,
+        osm_url: ['wikivoyage', 'wikidata'].includes(row.osm_type) ? null : `https://www.openstreetmap.org/${row.osm_type}/${row.osm_id}`,
         map_url: `https://www.openstreetmap.org/?mlat=${row.lat}&mlon=${row.lon}#map=16/${row.lat}/${row.lon}`,
     };
 }
@@ -119,6 +126,8 @@ function wireTrip(row) {
 
 function createStore(s, { config = {}, sharing = null } = {}) {
     const db = s.db;
+    const indexNow = require('./index-now').createIndexNow({ baseUrl: config.baseUrl,
+        key: config.isProduction && !config.drill ? config.indexNow?.key : '' });
     const q = (t) => t || db;
 
     /** The viewer as openvibe-sdk/share wants it. Tours' pages and API both name the person by subject. */
@@ -165,13 +174,18 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         return wireCity(row);
     }
 
+    async function cityById(id) {
+        return wireCity(await db.maybe('SELECT * FROM tours_cities WHERE id=$1', [String(id || '')]));
+    }
+
     async function cityPlaces(cityId, { limit = 60 } = {}) {
         const rows = await db.many(`SELECT p.*, c.slug AS city_slug, c.name AS city_name
             FROM tours_places p JOIN tours_cities c ON c.id = p.city_id
             WHERE p.city_id = $1
             -- The places a visitor can use first: a picture, a description, a name they can read; then by kind and name
             -- (by kind alone, Chongqing's list opened on an artwork with a Chinese-only name, 2026-11-02).
-            ORDER BY (p.image_url IS NOT NULL) DESC, (p.description IS NOT NULL) DESC,
+            ORDER BY (p.image_url IS NOT NULL AND p.image_credit IS NOT NULL AND p.image_license IS NOT NULL AND p.image_source_url IS NOT NULL) DESC,
+                     p.rank_score DESC, (p.description IS NOT NULL) DESC,
                      (p.name_en IS NOT NULL OR p.name ~ '[A-Za-z]') DESC, p.kind, p.name LIMIT $2`, [String(cityId), Math.min(200, Math.max(1, int(limit, 60)))]);
         return rows.map(wirePlace);
     }
@@ -193,8 +207,17 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         await db.exec('UPDATE tours_cities SET osm_fetched_at = now() WHERE id = $1', [String(cityId)]);
     }
 
+    async function markCityOsmAttempted(cityId) {
+        await db.exec('UPDATE tours_cities SET osm_attempted_at = now() WHERE id = $1', [String(cityId)]);
+    }
+
     async function cityLive(cityId) {
         const rows = await db.many(`SELECT * FROM tours_live WHERE city_id = $1 ORDER BY kind, fetched_at DESC LIMIT 12`, [String(cityId)]);
+        return rows.map(wireLive);
+    }
+
+    async function placeLive(placeId) {
+        const rows = await db.many('SELECT * FROM tours_live WHERE place_id = $1 ORDER BY kind, fetched_at DESC LIMIT 12', [String(placeId)]);
         return rows.map(wireLive);
     }
 
@@ -208,6 +231,15 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         const row = await db.maybe(`SELECT p.*, c.slug AS city_slug, c.name AS city_name
             FROM tours_places p JOIN tours_cities c ON c.id = p.city_id WHERE p.id = $1`, [String(id || '')]);
         return wirePlace(row);
+    }
+
+    async function updatePlaceGuide(id, guide) {
+        await db.exec(`UPDATE tours_places SET description=$2, guide_features=$3, guide_visit=$4, guide_season=$5,
+            source='wikipedia', source_url=$6, guide_why=$7, updated_at=now() WHERE id=$1`,
+        [String(id), clean(guide.intro, 600), guide.features ? clean(guide.features, 400) : null,
+            guide.visit ? clean(guide.visit, 400) : null, guide.season ? clean(guide.season, 400) : null, guide.url,
+            guide.why ? clean(guide.why, 600) : null]);
+        return placeById(id);
     }
 
     async function routeById(id) {
@@ -298,7 +330,7 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         return await db.many('SELECT id, updated_at FROM tours_routes ORDER BY id LIMIT $1', [limit]);
     }
     async function publicPlacesForSitemap(limit = 20000) {
-        return await db.many('SELECT id, updated_at FROM tours_places ORDER BY id LIMIT $1', [limit]);
+        return await db.many('SELECT id, name, name_en, updated_at FROM tours_places ORDER BY id LIMIT $1', [limit]);
     }
     async function publicCitiesForLlms(limit = 200) {
         return await db.many('SELECT slug, name, country, summary FROM tours_cities ORDER BY population DESC NULLS LAST LIMIT $1', [limit]);
@@ -310,20 +342,23 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         const slug = c.slug || slugify(c.name);
         await db.exec(`INSERT INTO tours_cities
             (id, slug, name, country, country_code, region, lat, lon, population, wikidata_id, wikipedia_title, wikivoyage_title,
-             summary, image_url, image_credit, image_license, image_license_url, source, source_url, fetched_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,now())
+             summary, image_url, image_credit, image_license, image_license_url, source, source_url, fetched_at, updated_at, image_source_url)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,now(),$21)
             ON CONFLICT (id) DO UPDATE SET
               slug = EXCLUDED.slug, name = EXCLUDED.name, country = EXCLUDED.country, country_code = EXCLUDED.country_code,
               region = EXCLUDED.region, lat = EXCLUDED.lat, lon = EXCLUDED.lon, population = EXCLUDED.population,
               wikidata_id = EXCLUDED.wikidata_id, wikipedia_title = EXCLUDED.wikipedia_title, wikivoyage_title = EXCLUDED.wikivoyage_title,
               summary = COALESCE(EXCLUDED.summary, tours_cities.summary), image_url = EXCLUDED.image_url,
               image_credit = EXCLUDED.image_credit, image_license = EXCLUDED.image_license, image_license_url = EXCLUDED.image_license_url,
-              source = EXCLUDED.source, source_url = EXCLUDED.source_url, fetched_at = EXCLUDED.fetched_at, updated_at = now()`,
+              source = EXCLUDED.source, source_url = EXCLUDED.source_url, fetched_at = EXCLUDED.fetched_at,
+              image_source_url = EXCLUDED.image_source_url, updated_at = now()`,
         [id, slug, clean(c.name, 120), clean(c.country, 120), c.countryCode || null, c.region ? clean(c.region, 120) : null,
             Number(c.lat), Number(c.lon), c.population == null ? null : Number(c.population), c.wikidataId,
             c.wikipediaTitle || null, c.wikivoyageTitle || null, c.summary ? clean(c.summary, 1200) : null,
             c.imageUrl || null, c.imageCredit ? clean(c.imageCredit, 250) : null, c.imageLicense ? clean(c.imageLicense, 120) : null,
-            c.imageLicenseUrl || null, c.source || 'wikidata', c.sourceUrl, new Date(c.fetchedAt || s.now()).toISOString()]);
+            c.imageLicenseUrl || null, c.source || 'wikidata', c.sourceUrl, new Date(c.fetchedAt || s.now()).toISOString(), c.imageSourceUrl || null]);
+        indexNow.add(`/city/${slug}`);
+        indexNow.add(`/city/${slug}/free`);
         return id;
     }
 
@@ -348,21 +383,25 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         const id = stableId('plc', `${p.osmType}:${p.osmId}`);
         await db.exec(`INSERT INTO tours_places
             (id, city_id, osm_type, osm_id, name, kind, lat, lon, address, website, opening_hours, wheelchair, fee,
-             wikidata_id, wikipedia, image_url, image_credit, image_license, description, source, source_url, fetched_at, name_en, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,now())
+             wikidata_id, wikipedia, image_url, image_credit, image_license, description, source, source_url, fetched_at, name_en, updated_at, image_license_url, image_source_url, gallery, rank_score, guide_why)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,now(),$24,$25,$26::jsonb,$27,$28)
             ON CONFLICT (osm_type, osm_id) DO UPDATE SET
               city_id = EXCLUDED.city_id, name = EXCLUDED.name, name_en = EXCLUDED.name_en, kind = EXCLUDED.kind, lat = EXCLUDED.lat, lon = EXCLUDED.lon,
               address = EXCLUDED.address, website = EXCLUDED.website, opening_hours = EXCLUDED.opening_hours,
               wheelchair = EXCLUDED.wheelchair, fee = EXCLUDED.fee, wikidata_id = EXCLUDED.wikidata_id, wikipedia = EXCLUDED.wikipedia,
               image_url = EXCLUDED.image_url, image_credit = EXCLUDED.image_credit, image_license = EXCLUDED.image_license,
-              description = EXCLUDED.description, source = EXCLUDED.source, source_url = EXCLUDED.source_url,
+              image_license_url = EXCLUDED.image_license_url, image_source_url = EXCLUDED.image_source_url, gallery = EXCLUDED.gallery, rank_score = EXCLUDED.rank_score,
+              description = EXCLUDED.description, guide_why = COALESCE(EXCLUDED.guide_why, tours_places.guide_why), source = EXCLUDED.source, source_url = EXCLUDED.source_url,
               fetched_at = EXCLUDED.fetched_at, updated_at = now()`,
         [id, p.cityId, p.osmType, String(p.osmId), clean(p.name, 200), p.kind, Number(p.lat), Number(p.lon),
             p.address ? clean(p.address, 250) : null, p.website || null, p.openingHours ? clean(p.openingHours, 200) : null,
             p.wheelchair || null, p.fee || null, p.wikidataId || null, p.wikipedia || null, p.imageUrl || null,
             p.imageCredit ? clean(p.imageCredit, 250) : null, p.imageLicense ? clean(p.imageLicense, 120) : null,
             p.description ? clean(p.description, 800) : null, p.source || 'openstreetmap', p.sourceUrl,
-            new Date(p.fetchedAt || s.now()).toISOString(), p.nameEn ? clean(p.nameEn, 200) : null]);
+            new Date(p.fetchedAt || s.now()).toISOString(), p.nameEn ? clean(p.nameEn, 200) : null,
+            p.imageLicenseUrl || null, p.imageSourceUrl || null, JSON.stringify(p.gallery || []), Math.max(0, int(p.rankScore)),
+            p.guideWhy ? clean(p.guideWhy, 600) : null]);
+        indexNow.add(placePath({ id, name: p.name, name_en: p.nameEn }));
         return id;
     }
 
@@ -399,18 +438,18 @@ function createStore(s, { config = {}, sharing = null } = {}) {
         const id = stableId('liv', `${item.kind}:${item.externalId}`);
         await db.exec(`INSERT INTO tours_live
             (id, kind, external_id, username, display_name, title, category, thumbnail_url, viewer_count, city_id, city_name,
-             url, started_at, ended_at, fetched_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             url, started_at, ended_at, fetched_at, place_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
             ON CONFLICT (kind, external_id) DO UPDATE SET
               username = EXCLUDED.username, display_name = EXCLUDED.display_name, title = EXCLUDED.title,
               category = EXCLUDED.category, thumbnail_url = EXCLUDED.thumbnail_url, viewer_count = EXCLUDED.viewer_count,
-              city_id = EXCLUDED.city_id, city_name = EXCLUDED.city_name, url = EXCLUDED.url,
+              city_id = EXCLUDED.city_id, city_name = EXCLUDED.city_name, place_id = EXCLUDED.place_id, url = EXCLUDED.url,
               started_at = EXCLUDED.started_at, ended_at = EXCLUDED.ended_at, fetched_at = EXCLUDED.fetched_at`,
         [id, item.kind, String(item.externalId), item.username, item.displayName ? clean(item.displayName, 80) : null,
             clean(item.title, 240), item.category ? clean(item.category, 40) : null, item.thumbnailUrl || null,
             Math.max(0, int(item.viewerCount)), item.cityId || null, item.cityName ? clean(item.cityName, 120) : null,
             item.url, item.startedAt ? new Date(item.startedAt).toISOString() : null,
-            item.endedAt ? new Date(item.endedAt).toISOString() : null, new Date(item.fetchedAt || s.now()).toISOString()]);
+            item.endedAt ? new Date(item.endedAt).toISOString() : null, new Date(item.fetchedAt || s.now()).toISOString(), item.placeId || null]);
         return id;
     }
 
@@ -647,8 +686,8 @@ function createStore(s, { config = {}, sharing = null } = {}) {
     }
 
     return {
-        counts, listCities, cityBySlug, cityPlaces, cityRoutes, cityLive, cityStays, citiesForOsm, markCityOsmFetched,
-        placeById, routeById, routes, routesForPlace, placeOfTheDay, liveNow, recentTours, stays,
+        counts, listCities, cityBySlug, cityById, cityPlaces, cityRoutes, cityLive, placeLive, cityStays, citiesForOsm, markCityOsmFetched, markCityOsmAttempted,
+        placeById, updatePlaceGuide, routeById, routes, routesForPlace, placeOfTheDay, liveNow, recentTours, stays,
         latestJobRuns, recordJobStart, recordJobFinish,
         publicCitiesForSitemap, publicRoutesForSitemap, publicPlacesForSitemap, publicCitiesForLlms,
         upsertCity, upsertCitySource, citySourcesMissing, citySource, upsertPlace, replaceRoutesForCity,
@@ -658,4 +697,4 @@ function createStore(s, { config = {}, sharing = null } = {}) {
     };
 }
 
-module.exports = { createStore, stableId, slugify, wireCity, wirePlace, wireRoute, wireStop, wireLive, wireStay, wireTrip, SLUG_RE, SUBJECT_RE, VISIBILITIES, LIVE_KINDS };
+module.exports = { createStore, stableId, slugify, placePath, wireCity, wirePlace, wireRoute, wireStop, wireLive, wireStay, wireTrip, SLUG_RE, SUBJECT_RE, VISIBILITIES, LIVE_KINDS };
