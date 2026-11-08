@@ -55,10 +55,8 @@ function createDiscover({ config, s, store, jobs, fetchImpl = globalThis.fetch, 
                     wikivoyageTitle: pages[0].title, wikitext: JSON.stringify({ pages }),
                     sourceUrl: pages[0].sourceUrl, fetchedAt: pages[0].fetchedAt,
                 });
-                const notable = await s.db.maybe(`SELECT city_id FROM tours_wikidata_city_places
-                    WHERE city_id=$1 AND fetched_at > now()-interval '7 days'`, [existing.id]);
                 const osmFresh = existing.osm_fetched_at && Date.now() - new Date(existing.osm_fetched_at).getTime() < 7 * 86_400_000;
-                if (missing.length || !notable || !osmFresh) {
+                if (missing.length || !osmFresh) {
                     try { await jobs.places.populateCity(existing); }
                     catch (err) { log.warn(`[Tours discover] places ${existing.name}: ${err.message}`); }
                 }
