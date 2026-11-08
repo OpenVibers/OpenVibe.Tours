@@ -27,6 +27,8 @@ function createJobs({ config, s, store, fetchImpl = globalThis.fetch, log = cons
     const jobs = {
         cities: { run: creators.cities.runOnce, maxAgeMs: config.jobs.citiesEveryMs, intervalMs: config.jobs.citiesEveryMs, version: creators.cities.version },
         places: { run: creators.places.runOnce, maxAgeMs: config.jobs.placesEveryMs, intervalMs: config.jobs.placesEveryMs, version: creators.places.version },
+        // Place photos the places job could not copy (Media's upload limit, a refused thumbnail): a batch every few minutes.
+        photos: { run: creators.places.photoPass, maxAgeMs: config.jobs.photosEveryMs, intervalMs: config.jobs.photosEveryMs },
         routes: { run: creators.routes.runOnce, maxAgeMs: config.jobs.routesEveryMs, intervalMs: config.jobs.routesEveryMs, version: creators.routes.version },
         live: { run: creators.live.runOnce, maxAgeMs: config.jobs.liveEveryMs, intervalMs: config.jobs.liveEveryMs },
         stays: { run: creators.stays.runOnce, maxAgeMs: config.jobs.staysEveryMs, intervalMs: config.jobs.staysEveryMs },

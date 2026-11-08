@@ -98,6 +98,7 @@ function load(env = process.env) {
             intervalMs: Math.max(60_000, int(env.TOURS_JOBS_INTERVAL_MS, 6 * 60 * 60 * 1000)),
             citiesEveryMs: Math.max(60_000, int(env.TOURS_CITIES_INTERVAL_MS, 24 * 60 * 60 * 1000)),
             placesEveryMs: Math.max(60_000, int(env.TOURS_PLACES_INTERVAL_MS, 7 * 24 * 60 * 60 * 1000)),
+            photosEveryMs: Math.max(60_000, int(env.TOURS_PHOTOS_INTERVAL_MS, 10 * 60 * 1000)),
             routesEveryMs: Math.max(60_000, int(env.TOURS_ROUTES_INTERVAL_MS, 7 * 24 * 60 * 60 * 1000)),
             liveEveryMs: Math.max(30_000, int(env.TOURS_LIVE_INTERVAL_MS, 2 * 60 * 1000)),
             staysEveryMs: Math.max(60_000, int(env.TOURS_STAYS_INTERVAL_MS, 6 * 60 * 60 * 1000)),
