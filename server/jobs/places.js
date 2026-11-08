@@ -21,7 +21,7 @@ const { isPlace } = require('../places/is-place');
 
 // A run under older rules is not fresh (jobs/index.js): name-en-1 stored OpenStreetMap's English names; wv-text-1
 // rewrites the stored Wikivoyage places' text with the current parser.
-const PLACES_VERSION = 'notable-places-3-photo-pass';   // 11-08: the first boot runs the photo pass at once
+const PLACES_VERSION = 'notable-places-4-photo-pace';   // 11-08: the first boot retries the photos Media refused at once
 
 function commonsFile(value) {
     const raw = String(value || '').trim();
