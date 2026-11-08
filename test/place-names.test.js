@@ -39,7 +39,7 @@ const node = (tags) => ({ type: 'node', id: 9001, lat: 29.56, lon: 106.58, tags:
         await check('the city page lists it by its English name, with its own name in the line under it', async () => {
             const r = await t.get(`/city/${city.slug}`);
             assert.strictEqual(r.status, 200);
-            assert.match(r.text, /<strong>Hongya Cave<\/strong><span class="tr-muted">洪崖洞 · attraction/);
+            assert.match(r.text, /<h3><a href="[^"]+">Hongya Cave<\/a><\/h3><p class="tr-pcard-meta">洪崖洞 · attraction/);
         });
 
         await check('a row leaves out a kind its name already says, and the facts join without a stray separator', async () => {
