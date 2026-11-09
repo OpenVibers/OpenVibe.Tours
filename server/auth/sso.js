@@ -268,6 +268,14 @@ function createSso({ config, keys, fetchImpl = globalThis.fetch, now = () => Dat
             if (!v || v.kind !== 'user') return res.status(401).json({ error: 'Not signed in' });
             res.json({ user: { username: v.username, display_name: v.displayName, subject_id: v.subject, role: v.role, avatar_url: v.avatarUrl || null, profile_color: v.profileColor || null } });
         });
+
+        // The shared Dock needs a verified Network access token from this HTTP-only session.
+        r.get('/navbar-token', (req, res) => {
+            res.set('Cache-Control', cache.htmlHeaders({ private: true }));
+            const viewer = req.viewer;
+            if (!viewer || viewer.kind !== 'user' || !viewer.token) return res.status(401).json({ error: 'Not signed in' });
+            return res.json({ token: viewer.token });
+        });
         return r;
     }
 
