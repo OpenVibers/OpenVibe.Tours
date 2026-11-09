@@ -2,12 +2,14 @@
 /**
  * Tours' photo cache asks Commons for a thumbnail width Commons renders (960), falls back to the exact URL imageinfo
  * returned when that is refused, and says so in the log when nothing can be copied. On 11-08 every place photo failed
- * silently: the cache asked for 640px, which Commons answers with 400.
+ * silently: the cache asked for 640px, which Commons answers with 400. On 11-09 Commons answered 429 to every download:
+ * the places job asked for a whole batch at once (371 in a minute). Copies now run one at a time, and a host's 429
+ * pauses downloads from it.
  *
  *   node test/photo-cache-widths.test.js
  */
 const assert = require('assert');
-const { createPhotoCache } = require('../server/places/photo-cache');
+const { createPhotoCache, resetPhotoPacing } = require('../server/places/photo-cache');
 
 const config = { oauth: { clientSecret: 'x' }, openData: { userAgent: 'test' }, drill: false };
 const db = { maybe: async () => null, exec: async () => {} };
@@ -54,5 +56,36 @@ const objectsClient = { upload: async (bytes) => { uploaded.push(bytes.length); 
     assert.strictEqual(await limited.cache({ ...image, sourceUrl: image.sourceUrl + "429b" }), null);
     assert.strictEqual(fetched, before, "paused: nothing is downloaded");
     assert.strictEqual(warned429.filter((m) => /rate limiting uploads/.test(m)).length, 1, "the pause is logged once");
-    console.log('photo cache: 960px first, the imageinfo URL as fallback, refusals logged');
+
+    // 6. Copies run one at a time for the process, a gap apart: a batch never downloads in parallel.
+    resetPhotoPacing();
+    let inFlight = 0, most = 0;
+    const starts = [];
+    const queued = createPhotoCache({ config, s: { db }, objectsClient, uploadGapMs: 60, log: { warn() {} },
+        fetchImpl: async () => { inFlight += 1; most = Math.max(most, inFlight); starts.push(Date.now()); await new Promise((r) => setTimeout(r, 5)); inFlight -= 1; return ok(); } });
+    await Promise.all([1, 2, 3, 4].map((n) => queued.cache({ ...image, sourceUrl: `${image.sourceUrl}q${n}` })));
+    assert.strictEqual(most, 1, 'one download at a time');
+    assert.ok(starts.every((t, i) => i === 0 || t - starts[i - 1] >= 55), 'downloads are a gap apart');
+
+    // 7. Commons says 429: no second try for that file, Commons downloads pause (logged once), Openverse still copies.
+    resetPhotoPacing();
+    const warnedHost = [];
+    let commonsAsked = 0, openverseAsked = 0;
+    const tooMany = { ok: false, status: 429, headers: { get: (h) => (h === 'retry-after' ? '5' : 'text/html') }, arrayBuffer: async () => new ArrayBuffer(0) };
+    const hosts = createPhotoCache({ config, s: { db }, objectsClient, uploadGapMs: 0, log: { warn: (m) => warnedHost.push(m) },
+        fetchImpl: async (u) => { if (/wikimedia/.test(u)) { commonsAsked += 1; return tooMany; } openverseAsked += 1; return ok(); } });
+    const batch = await Promise.all([1, 2, 3].map((n) => hosts.cache({ ...image, sourceUrl: `${image.sourceUrl}c${n}` })));
+    assert.deepStrictEqual(batch, [null, null, null], 'refused copies are deferred');
+    assert.strictEqual(commonsAsked, 1, 'after a 429 nothing more is asked of Commons (not even the fallback URL)');
+    assert.strictEqual(warnedHost.filter((m) => /rate limiting picture downloads/.test(m)).length, 1, 'the pause is logged once');
+    assert.ok(warnedHost.some((m) => /pause for 10 minutes/.test(m)), 'a short Retry-After still pauses at least 10 minutes');
+    const verse = await hosts.cache({ url: 'https://api.openverse.org/v1/images/0b8a4c62-5f3e-4c1e-9a1b-2a7f4e1d9c33/thumb/', sourceUrl: 'https://www.flickr.com/photos/x/1', provider: 'openverse' });
+    assert.ok(verse && openverseAsked === 1, 'another host is not paused');
+
+    // 8. While paused, a photo already in Media is still returned.
+    const known = createPhotoCache({ config, s: { db: { maybe: async () => ({ media_url: 'https://openvibe.media/o/med_known1' }), exec: async () => {} } },
+        objectsClient, uploadGapMs: 0, log: { warn() {} }, fetchImpl: async () => { throw new Error('no download expected'); } });
+    assert.strictEqual((await known.cache(image)).url, 'https://openvibe.media/o/med_known1');
+    resetPhotoPacing();
+    console.log('photo cache: 960px first, the imageinfo URL as fallback, refusals logged, one copy at a time, 429s pause');
 })().catch((e) => { console.error(e); process.exitCode = 1; });
