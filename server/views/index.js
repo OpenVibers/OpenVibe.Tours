@@ -1,4 +1,5 @@
 'use strict';
+const { finishedSentences } = require('../places/clip');
 
 /**
  * Tours' server-rendered pages. They work without JavaScript: every link is real, every action is a plain form.
@@ -48,6 +49,14 @@ function imageWidth(u, w) {
         const url = new URL(u);
         if (/(^|\.)commons\.wikimedia\.org$/i.test(url.hostname) && /^\/wiki\/Special:FilePath\//.test(url.pathname)) {
             url.searchParams.set('width', String(w));
+            return url.toString();
+        }
+        // Media serves a public picture at a smaller width (GET /o/:id?w=, WebP, cached; its ladder stops at 640). A
+        // card drawn 180 px wide was downloading the whole copy (912 KB for Lumen Field, 11-09; 37 KB at w=480).
+        // Wider than 640 (the cover on a desktop) takes the stored copy itself.
+        if (url.hostname === 'openvibe.media' && /^\/o\/[A-Za-z0-9_-]{6,64}$/.test(url.pathname) && !url.search) {
+            if (w > 640) return url.toString();
+            url.searchParams.set('w', String(w));
             return url.toString();
         }
         if (/(^|\.)wikimedia\.org$/i.test(url.hostname)) {
@@ -373,7 +382,7 @@ ${stays.length ? `<section class="tr-sec"><div class="tr-sec-head"><h2>Stays</h2
 }
 
 function placePage({ place, routeList = [], trips = [], nearby = [], live = [], summary = null } = {}) {
-    const sentences = (place.description || '').split(/(?<=[.!?])\s+/).filter(Boolean);
+    const sentences = finishedSentences(place.description || '').split(/(?<=[.!?…])\s+/).filter(Boolean);
     const seasonal = sentences.find((s) => /\b(spring|summer|autumn|fall|winter|bloom|blossom|season)\b/i.test(s));
     const guided = sentences.find((s) => /\b(guided tour|free tour)\b/i.test(s));
     const now = new Date();
@@ -382,7 +391,7 @@ function placePage({ place, routeList = [], trips = [], nearby = [], live = [], 
     const name = placeName(place);
     const lede = sentences[0] || `${name} in ${place.city_name}.`;
     // Why go never repeats the lede: the AI summary when there is one, else the description after its first sentence.
-    const why = summary?.text || sentences.slice(1).join(' ');
+    const why = finishedSentences(summary?.text || '') || sentences.slice(1).join(' ');
     const lookFor = place.guide_features && place.guide_features !== place.description ? place.guide_features : '';
     const season = place.guide_season || seasonal || '';
     const visit = place.guide_visit || guided || '';

@@ -1,4 +1,5 @@
 'use strict';
+const { clipSentences } = require('../places/clip');
 
 /**
  * The places job, in two passes:
@@ -48,7 +49,7 @@ function rankPlace(place, entity, views = 0) {
 
 function whyAfterLead(text) {
     const sentences = String(text || '').match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()) || [];
-    return sentences.slice(1, 4).join(' ').slice(0, 600) || null;
+    return clipSentences(sentences.slice(1, 4).join(' '), 600) || null;
 }
 
 function createPlacesJob({ config, s, store, fetchImpl, log = console }) {
