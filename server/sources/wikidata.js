@@ -1,4 +1,5 @@
 'use strict';
+const { clipSentences } = require('../places/clip');
 
 /**
  * Wikidata, Wikipedia and Wikimedia Commons (CC0 / CC BY-SA; each image keeps its own licence).
@@ -62,7 +63,7 @@ function extractGuide(extract, title) {
     const sentences = lead.match(/[^.!?]+[.!?]+(?:\s|$)/g)?.map((s) => s.trim()) || [];
     const intro = sentences[0] || '';
     if (!intro || intro.length < 20) return null;
-    const why = sentences.slice(1, 4).join(' ').slice(0, 600) || null;
+    const why = clipSentences(sentences.slice(1, 4).join(' '), 600) || null;
     const section = (name) => text.match(new RegExp(`== ${name} ==\\n([\\s\\S]*?)(?=\\n== |$)`, 'i'))?.[1] || '';
     const features = section('Features and programs').match(/Major features[^.]*\./i)?.[0] || null;
     const visit = text.match(/[^.\n]*(?:public tour|guided tour|free tour)[^.\n]*\./i)?.[0]?.trim() || null;
@@ -71,8 +72,8 @@ function extractGuide(extract, title) {
     const seasonal = /\b(?:spring|summer|fall|autumn|winter|bloom(?:ing|s)?|foliage|season(?:al|s)?|January|February|March|April|May|June|July|August|September|October|November|December)\b/i;
     const season = text.split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim())
         .find((s) => seasonal.test(s) && new RegExp(`\\b${named}\\b`, 'i').test(s)) || null;
-    return { intro: intro.slice(0, 600), why, features: features?.slice(0, 400) || null,
-        visit: visit?.slice(0, 400) || null, season: season?.slice(0, 400) || null,
+    return { intro: clipSentences(intro, 600), why, features: features ? clipSentences(features, 400) : null,
+        visit: visit ? clipSentences(visit, 400) : null, season: season ? clipSentences(season, 400) : null,
         url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(title).replace(/ /g, '_'))}` };
 }
 

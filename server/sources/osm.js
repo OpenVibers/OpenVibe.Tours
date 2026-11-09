@@ -1,4 +1,5 @@
 'use strict';
+const { clipSentences } = require('../places/clip');
 
 /**
  * OpenStreetMap through Overpass: one bounded `around:` query per city, named destinations only.
@@ -64,7 +65,7 @@ function placeFromElement(el, cityId, fetchedAt) {
         imageUrl: null,
         imageCredit: null,
         imageLicense: null,
-        description: tags.description ? String(tags.description).slice(0, 800) : null,
+        description: tags.description ? clipSentences(tags.description, 800) : null,
         source: 'openstreetmap',
         sourceUrl: `https://www.openstreetmap.org/${osmType}/${el.id}`,
         fetchedAt,

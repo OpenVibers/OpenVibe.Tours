@@ -1,4 +1,5 @@
 'use strict';
+const { clipSentences } = require('./clip');
 
 const crypto = require('crypto');
 
@@ -24,7 +25,7 @@ function createNarrative({ config, s, fetchImpl = globalThis.fetch, log = consol
             const r = await ai.run('ai.summarize', {
                 text: `${place.name}: ${place.description}`, max_words: 70, style: 'a short, inviting visitor guide using only the source facts',
             }, { target: { service: 'tours', type: 'place', id: place.id }, idempotencyKey: `tours-place-${key}` });
-            const summary = String(r.output?.text || '').trim().slice(0, 800);
+            const summary = clipSentences(r.output?.text || '', 800);
             if (!summary || r.synthetic) return null;
             await s.db.exec(`INSERT INTO tours_place_summaries(place_id, source_fetched_at, summary, run_id)
                 VALUES ($1,$2::timestamptz,$3,$4) ON CONFLICT(place_id) DO UPDATE SET

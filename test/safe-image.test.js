@@ -22,9 +22,16 @@ const thumbUrl = 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ab/Foo.j
 assert.strictEqual(imageWidth(thumbUrl, 330), null, 'a Commons thumbnail keeps the verified imageinfo URL');
 assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/5/51/Foo.png?utm_source=x', 640), null, 'an unscaled original keeps its URL because Wikimedia may reject an enlarged thumb');
 assert.strictEqual(imageWidth('https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg?width=1000', 330), 'https://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg?width=330', 'Special:FilePath takes a width');
-assert.strictEqual(imageWidth('https://openvibe.media/t/x.jpg', 330), null, 'a non-Wikimedia picture is not rewritten');
+assert.strictEqual(imageWidth('https://openvibe.media/t/x.jpg', 330), null, 'a Media path that is not a public object is not rewritten');
 assert.strictEqual(imageWidth('https://upload.wikimedia.org/wikipedia/commons/a/ab/Foo.jpg', 330), null, 'an original with a two-letter hash prefix keeps its URL');
 assert.strictEqual(imageWidth(null, 330), null);
+// Media's public objects take ?w= (WebP at its ladder, at most 640): a card no longer downloads the whole copy
+// (11-09: 912 KB for one Nearby card, 37 KB at w=480). Wider than 640, the stored copy itself.
+const obj = 'https://openvibe.media/o/med_01M6YPV5FV0XE5FV2EJW0TB9AA';
+assert.strictEqual(imageWidth(obj, 330), obj + '?w=330', 'a Media picture at the card width');
+assert.strictEqual(imageWidth(obj, 640), obj + '?w=640');
+assert.strictEqual(imageWidth(obj, 1200), obj, 'wider than Media resizes: the stored copy');
+assert.strictEqual(imageWidth(obj + '?w=160', 330), null, 'a URL that already asks for a size is left alone');
 
 assert.strictEqual(safeImage('https://photos.app.goo.gl/A7PbTNW1RbBbZUrTA'), null, 'a share link is not a picture');
 assert.ok(safeImage('https://upload.wikimedia.org/wikipedia/commons/a/ab/Hachiko.jpg'), 'Commons uploads');

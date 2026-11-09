@@ -1,4 +1,5 @@
 'use strict';
+const { clipSentences } = require('../places/clip');
 
 /**
  * Wikivoyage parsing (CC BY-SA). A city page gives the lead summary and its "See" listings; a districted city keeps
@@ -118,7 +119,7 @@ function leadSummary(wikitext) {
         const line = block.trim();
         if (!line || line.startsWith('|') || line.startsWith('=') || line.startsWith('*') || line.startsWith('#')) continue;
         const plain = stripWiki(line, { max: 1400 });
-        if (plain.length >= 80) return plain.slice(0, 1000);
+        if (plain.length >= 80) return clipSentences(plain, 1000);
     }
     return '';
 }
