@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use OpenVibe.Tours in research or a product, cite it as below."
+title: openvibe-tours
+type: software
+authors:
+  - name: OpenVibe
+    alias: OpenVibers
+    website: https://openvibe.network
+repository-code: https://github.com/OpenVibers/OpenVibe.Tours
+url: https://openvibe.tours
+license: AGPL-3.0-only
+abstract: "Travel guides for cities, places and walking routes, with stays and shared trips, at openvibe.tours."
+keywords:
+  - openvibe
+  - cities
+  - openstreetmap
+  - tours
+  - travel

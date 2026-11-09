@@ -2,6 +2,9 @@
 
 > Go anywhere: fly, stay, walk, watch.
 
+**Live site:** https://openvibe.tours · **API docs:** https://openvibe.services · **For AI:** https://openvibe.tours/llms.txt
+**Run it:** `npm ci && npm run dev` (Node 22 or newer) · **Tests:** `npm test`
+
 **Status:** v1 written, seeded and tested (see [STATUS.json](STATUS.json)).
 **Domain:** `openvibe.tours` · **Port:** 5170 · **Service id:** `tours` · **Env prefix:** `TOURS`
 **License:** AGPL-3.0-only (the same as every OpenVibe service).
