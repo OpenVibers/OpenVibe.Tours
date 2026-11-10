@@ -8,7 +8,7 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
 .tr { display: block; }
 .tr a { color: var(--room-strong, var(--accent-light, #60a5fa)); }
 .tr .ovk-i { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
-.tr-wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 64px; }
+.tr-wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 .tr-narrow { max-width: 640px; }
 .tr-page-pad { padding-top: clamp(28px, 6vw, 64px); }
 .tr-page-h { padding-top: clamp(20px, 4vw, 40px); margin-bottom: 22px; }
