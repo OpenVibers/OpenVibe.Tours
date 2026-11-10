@@ -143,9 +143,7 @@ html, body { margin: 0; background: var(--bg-primary, #0a0f1c); color: var(--tex
     .tr-pod-link img, .tr-pod-noimg { min-height: 150px; max-height: 210px; }
     .tr-form-inline { display: grid; grid-template-columns: 1fr; }
 }
-@media (prefers-reduced-motion: reduce) {
-    * { scroll-behavior: auto !important; }
-}
+html[data-ov-motion=off] *{scroll-behavior: auto !important}
 
 /* Tables on a phone (phone sweep, 2026-11-01): a table of three columns or more whose cells name their column (data-label) shows each row as a card, the first
    cell its title and every other cell named by its column (html.js gives each cell its data-label). Narrower tables
