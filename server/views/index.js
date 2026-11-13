@@ -519,7 +519,7 @@ function flightsPage({ values = {}, result = null, error = null, providers = {} 
 <button class="tr-btn" type="submit">Open the official search</button>
 </form>
 ${error ? note(esc(error), 'error') : ''}
-${result ? `<section class="tr-sec" id="tr-flight-result"><h2>Your search</h2><p><a class="tr-btn" href="${esc(result.url)}" rel="noopener" target="_blank">Flights ${esc(result.from)} → ${esc(result.to)}, ${esc(result.depart)}${result.return ? ` to ${esc(result.return)}` : ''}</a></p><p class="tr-fine">${esc(result.note)}</p></section>` : ''}
+${result ? `<section class="tr-sec" id="tr-flight-result"><h2>Your search</h2><p><a class="tr-btn" href="${esc(result.url)}" rel="noopener" target="_blank">Flights from ${esc(result.from)} to ${esc(result.to)}, ${esc(result.depart)}${result.return ? ` to ${esc(result.return)}` : ''}</a></p><p class="tr-fine">${esc(result.note)}</p></section>` : ''}
 <section class="tr-sec"><div class="tr-sec-head"><h2>Providers</h2></div><ul class="tr-list"><li>Google Flights (official, airline-neutral): on, as a link only.</li><li>Duffel: ${providers.duffel ? 'a key is configured, but no adapter exists in v1, so it is off.' : 'off — no key.'}</li><li>Kiwi Tequila: ${providers.kiwi ? 'a key is configured, but no adapter exists in v1, so it is off.' : 'off — no key.'}</li></ul><p class="tr-fine">A later provider replaces the link behind the same form. Prices would then carry their source and fetch time.</p></section>
 </div>`;
 }
