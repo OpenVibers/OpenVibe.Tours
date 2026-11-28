@@ -21,7 +21,16 @@ const SOURCE = {
 };
 
 const day = (iso) => (iso ? esc(String(iso).slice(0, 10)) : '—');
-const when = (iso) => (iso ? esc(String(iso).replace('T', ' ').replace(/\.\d+Z$/, ' UTC').replace(/Z$/, ' UTC')) : '—');
+// A moment in the reader's own zone and clock: a full instant (…Z) is a <time data-ov-time> that Shared's theme loader
+// rewrites, with the UTC words as the fallback for crawlers and no-script (plan item 13: /live and the home printed UTC
+// to everyone). Anything else stays the words it was.
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/;
+const when = (iso) => {
+    if (!iso) return '—';
+    const s = String(iso);
+    const words = esc(s.replace('T', ' ').replace(/\.\d+Z$/, ' UTC').replace(/Z$/, ' UTC'));
+    return INSTANT_RE.test(s) ? `<time datetime="${esc(s)}" data-ov-time="day">${words}</time>` : words;
+};
 const km = (m) => (Number(m) >= 1000 ? `${(Number(m) / 1000).toFixed(1)} km` : `${Math.round(Number(m) || 0)} m`);
 const safeHttp = (v) => (typeof v === 'string' && /^https?:\/\//i.test(v) ? v : null);
 // A picture is drawn only from a URL that is one, on a host the page's img-src allows (server/app.js): Commons, or an
